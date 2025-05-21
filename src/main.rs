@@ -1,11 +1,13 @@
 use std::io::{self, Write};
-use tokio::time::{sleep, Duration};
+use alloy::{network::Ethereum, providers::{Provider, ProviderBuilder}, rpc::types::{Filter, Topic}, sol_types::SolEvent};
 use anyhow::Result;
 use dotenv::dotenv;
 use std::env;
+use amms::amms::uniswap_v3::{IUniswapV3PoolEvents::Swap};
 use reqwest::Client;
 
-const BLOCKS_TO_TRACK: u64 = 100;
+
+const BLOCKS_TO_TRACK: u64 = 1;
 // Common Uniswap V3 pools to track
 const UNISWAP_POOLS: [&str; 5] = [
     "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640", // USDC-ETH 0.3%
@@ -78,6 +80,12 @@ async fn main() -> Result<()> {
     
     let client = Client::new();
 
+    let url = format!("https://eth-mainnet.g.alchemy.com/v2/{}", api_key);
+    let provider = ProviderBuilder::new().network::<Ethereum>().connect_http(url.parse()?);
+
+
+ 
+
     println!("Uniswap tracker starting...");
     io::stdout().flush()?;
 
@@ -93,28 +101,20 @@ async fn main() -> Result<()> {
     };
     
     println!("Fetching logs from block {} to {}", from_block, latest_block);
-    
-    // Get logs for the block range
-    match get_logs_for_blocks(&client, &api_key, from_block, latest_block).await {
-        Ok(logs) => {
-            let logs_array = logs["result"].as_array().unwrap();
-            println!("Found {} Uniswap V3 swap events", logs_array.len());
-            
-            // Print details of each swap
-            for log in logs_array {
-                let block_number = u64::from_str_radix(&log["blockNumber"].as_str().unwrap()[2..], 16)?;
-                let pool_address = &log["address"].as_str().unwrap();
-                println!("Block {}: Swap in pool {}", block_number, pool_address);
-            }
-        },
-        Err(e) => {
-            println!("Error getting logs: {}", e);
-            return Err(e);
-        }
-    }
 
-    // Keep the program running
-    loop {
-        sleep(Duration::from_secs(1)).await;
-    }
+
+    let events = vec![
+        Swap::SIGNATURE_HASH
+    ];
+
+    let filter: Filter = Filter::new().from_block(from_block).to_block(latest_block).event_signature(events);
+
+
+    let logs = provider.get_logs(&filter).await?;
+
+
+    println!("{:?}", logs);
+
+    Ok(())
+
 }

@@ -4,12 +4,21 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tokio = { version = "1.37", features = ["full"] }
+tokio = { version = "1.44.2", default-features = false, features = ["rt", "rt-multi-thread", "sync", "time"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 reqwest = { version = "0.12", features = ["json"] }
 futures = "0.3"
 tokio-tungstenite = "0.21"
-alloy = { version = "0.1.0", features = ["full"] }
 anyhow = "1.0"
 dotenv = "0.15"
+amms = "0.7.2"
+alloy = { version = "1.0.3", features = [
+  "contract",
+  "network",
+  "rpc",
+  "rpc-types",
+  "provider-ws",
+  "rpc-types-eth",
+  "signer-local",
+] }
