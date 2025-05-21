@@ -4,66 +4,18 @@ use anyhow::Result;
 use dotenv::dotenv;
 use std::env;
 use amms::amms::uniswap_v3::{IUniswapV3PoolEvents::Swap};
-use reqwest::Client;
+// use reqwest::Client;
 
 
-const BLOCKS_TO_TRACK: u64 = 1;
+const BLOCKS_TO_TRACK: u64 = 0;
 // Common Uniswap V3 pools to track
-const UNISWAP_POOLS: [&str; 5] = [
-    "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640", // USDC-ETH 0.3%
-    "0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8", // USDC-ETH 0.05%
-    "0x7858E59e0C01EA06Df3aF3D20aC7B0003275D4Bf", // USDC-USDT 0.3%
-    "0xCBCdF9626bC03E24f779434178A73a0B4bad62eD", // WBTC-ETH 0.3%
-    "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36"  // USDT-ETH 0.3%
-];
-
-async fn get_latest_block(client: &Client, api_key: &str) -> Result<u64> {
-    let url = format!("https://eth-mainnet.g.alchemy.com/v2/{}", api_key);
-    
-    let response = client
-        .post(url)
-        .json(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "eth_blockNumber",
-            "params": []
-        }))
-        .send()
-        .await?;
-
-    let result: serde_json::Value = response.json().await?;
-    let block_number_hex = result["result"].as_str().unwrap();
-    
-    // Convert hex string to u64
-    let block_number = u64::from_str_radix(&block_number_hex[2..], 16)?;
-    Ok(block_number)
-}
-
-async fn get_logs_for_blocks(client: &Client, api_key: &str, from_block: u64, to_block: u64) -> Result<serde_json::Value> {
-    let url = format!("https://eth-mainnet.g.alchemy.com/v2/{}", api_key);
-    
-    let response = client
-        .post(url)
-        .json(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "eth_getLogs",
-            "params": [{
-                "fromBlock": format!("0x{:x}", from_block),
-                "toBlock": format!("0x{:x}", to_block),
-                "address": UNISWAP_POOLS,
-                "topics": [
-                    // Swap event signature
-                    "0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67"
-                ]
-            }]
-        }))
-        .send()
-        .await?;
-
-    let result: serde_json::Value = response.json().await?;
-    Ok(result)
-}
+// const UNISWAP_POOLS: [&str; 5] = [
+//     "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640", // USDC-ETH 0.3%
+//     "0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8", // USDC-ETH 0.05%
+//     "0x7858E59e0C01EA06Df3aF3D20aC7B0003275D4Bf", // USDC-USDT 0.3%
+//     "0xCBCdF9626bC03E24f779434178A73a0B4bad62eD", // WBTC-ETH 0.3%
+//     "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36"  // USDT-ETH 0.3%
+// ];
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -78,19 +30,18 @@ async fn main() -> Result<()> {
         }
     };
     
-    let client = Client::new();
+    // let client = Client::new();
 
     let url = format!("https://eth-mainnet.g.alchemy.com/v2/{}", api_key);
-    let provider = ProviderBuilder::new().network::<Ethereum>().connect_http(url.parse()?);
-
-
- 
+    let provider = ProviderBuilder::new()
+        .network::<Ethereum>().
+        connect_http(url.parse()?);
 
     println!("Uniswap tracker starting...");
     io::stdout().flush()?;
 
     // Get latest block
-    let latest_block = get_latest_block(&client, &api_key).await?;
+    let latest_block = provider.get_block_number().await?;
     println!("Latest block: {}", latest_block);
     
     // Calculate the block number from 100 blocks ago
@@ -107,13 +58,19 @@ async fn main() -> Result<()> {
         Swap::SIGNATURE_HASH
     ];
 
-    let filter: Filter = Filter::new().from_block(from_block).to_block(latest_block).event_signature(events);
-
+    let filter: Filter = Filter::new().
+        from_block(from_block)
+        .to_block(latest_block)
+        .event_signature(events);
 
     let logs = provider.get_logs(&filter).await?;
 
 
-    println!("{:?}", logs);
+    // println!("{:?}", logs);
+    println!("Num Uniswap swap events: {}", logs.len());
+    if logs.len() > 0 {
+        println!("{:#?}", logs[0])
+    }
 
     Ok(())
 
