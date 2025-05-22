@@ -3,7 +3,7 @@ use alloy::{network::Ethereum, providers::{Provider, ProviderBuilder}, rpc::type
 use anyhow::Result;
 use dotenv::dotenv;
 use std::env;
-use amms::amms::uniswap_v3::{IUniswapV3PoolEvents::Swap};
+use amms::amms::uniswap_v3::{IUniswapV3Factory::IUniswapV3FactoryInstance, IUniswapV3Pool::IUniswapV3PoolInstance, IUniswapV3PoolEvents::Swap};
 // use reqwest::Client;
 
 
@@ -68,8 +68,23 @@ async fn main() -> Result<()> {
 
     // println!("{:?}", logs);
     println!("Num Uniswap swap events: {}", logs.len());
-    if logs.len() > 0 {
-        println!("{:#?}", logs[0])
+    // if logs.len() > 0 {
+    //     println!("{:#?}", logs[0])
+    // }
+
+    for log in logs {
+        if let Ok(decode) =  log.log_decode::<Swap>() {
+
+            let swap = decode.data();
+            println!("Pool address: {:?}", log.address());
+
+            let contract = IUniswapV3PoolInstance::new(log.address(), provider.clone());
+            println!("Token address: {:?}", contract.token0().call().await?);
+
+            println!("Sender: {:?}", swap.sender);
+            println!("Recipient: {:?}", swap.recipient);
+
+        }
     }
 
     Ok(())
