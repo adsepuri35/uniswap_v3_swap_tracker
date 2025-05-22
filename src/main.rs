@@ -6,6 +6,9 @@ use std::env;
 use amms::amms::uniswap_v3::{IUniswapV3Factory::IUniswapV3FactoryInstance, IUniswapV3Pool::IUniswapV3PoolInstance, IUniswapV3PoolEvents::Swap};
 // use reqwest::Client;
 
+mod ierc20;
+use ierc20::IERC20;
+
 
 const BLOCKS_TO_TRACK: u64 = 0;
 // Common Uniswap V3 pools to track
@@ -19,7 +22,7 @@ const BLOCKS_TO_TRACK: u64 = 0;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Load environment variables
+    // load env variables
     dotenv().ok();
     
     let api_key = match env::var("ALCHEMY_API_KEY") {
@@ -40,11 +43,11 @@ async fn main() -> Result<()> {
     println!("Uniswap tracker starting...");
     io::stdout().flush()?;
 
-    // Get latest block
+    // get latest block
     let latest_block = provider.get_block_number().await?;
     println!("Latest block: {}", latest_block);
     
-    // Calculate the block number from 100 blocks ago
+    // get curr block - x
     let from_block = if latest_block > BLOCKS_TO_TRACK {
         latest_block - BLOCKS_TO_TRACK
     } else {
@@ -79,8 +82,16 @@ async fn main() -> Result<()> {
             println!("Pool address: {:?}", log.address());
 
             let contract = IUniswapV3PoolInstance::new(log.address(), provider.clone());
-            println!("Token address: {:?}", contract.token0().call().await?);
+            let token0_address = contract.token0().call().await?;
+            let token1_address = contract.token1().call().await?;
+            // println!("Token address: {:?}", token0_address);
 
+            let ierc20_token0 = IERC20::new(token0_address, provider.clone());
+            let ierc20_token1 = IERC20::new(token1_address, provider.clone());
+            println!("Token 0: {:?}", ierc20_token0.symbol().call().await?);
+            println!("Token 1: {:?}", ierc20_token1.symbol().call().await?);
+
+    
             println!("Sender: {:?}", swap.sender);
             println!("Recipient: {:?}", swap.recipient);
 

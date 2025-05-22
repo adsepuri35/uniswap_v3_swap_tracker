@@ -3805,6 +3805,8 @@ name = "uniswap_tracker_tui"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "alloy-contract",
+ "alloy-sol-types",
  "amms",
  "anyhow",
  "dotenv",

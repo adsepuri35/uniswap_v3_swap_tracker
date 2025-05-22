@@ -22,3 +22,5 @@ alloy = { version = "1.0.3", features = [
   "rpc-types-eth",
   "signer-local",
 ] }
+alloy-sol-types = "1.1.2"
+alloy-contract = "1.0.6"
