@@ -1,8 +1,8 @@
 use std::io::{self, Write};
-use alloy::{network::Ethereum, providers::{Provider, ProviderBuilder}, rpc::types::{Filter, Topic}, sol_types::SolEvent};
+use alloy::{network::Ethereum, providers::{Provider, ProviderBuilder}, rpc::types::{Filter, Topic}, sol_types::SolEvent, core::primitives::Address};
 use anyhow::Result;
 use dotenv::dotenv;
-use std::env;
+use std::{env, collections::HashMap};
 use amms::amms::uniswap_v3::{IUniswapV3Factory::IUniswapV3FactoryInstance, IUniswapV3Pool::IUniswapV3PoolInstance, IUniswapV3PoolEvents::Swap};
 // use reqwest::Client;
 
@@ -75,6 +75,8 @@ async fn main() -> Result<()> {
     //     println!("{:#?}", logs[0])
     // }
 
+    let mut address_to_symbol: HashMap<Address, String> = HashMap::new();
+
     for log in logs {
         if let Ok(decode) =  log.log_decode::<Swap>() {
 
@@ -84,12 +86,30 @@ async fn main() -> Result<()> {
             let contract = IUniswapV3PoolInstance::new(log.address(), provider.clone());
             let token0_address = contract.token0().call().await?;
             let token1_address = contract.token1().call().await?;
-            // println!("Token address: {:?}", token0_address);
 
-            let ierc20_token0 = IERC20::new(token0_address, provider.clone());
-            let ierc20_token1 = IERC20::new(token1_address, provider.clone());
-            println!("Token 0: {:?}", ierc20_token0.symbol().call().await?);
-            println!("Token 1: {:?}", ierc20_token1.symbol().call().await?);
+
+            if !address_to_symbol.contains_key(&token0_address) {
+                let ierc20_token0 = IERC20::new(token0_address, provider.clone());
+                let token0_symbol = ierc20_token0.symbol().call().await?;
+                println!("Stored: {:?}", token0_symbol);
+                address_to_symbol.insert(token0_address, token0_symbol);
+            } else {
+                println!("Repeat of: {:?}", address_to_symbol.get(&token0_address).unwrap_or(&"Unknown".to_string()));
+            }
+            if !address_to_symbol.contains_key(&token1_address) {
+                let ierc20_token1 = IERC20::new(token1_address, provider.clone());
+                let token1_symbol = ierc20_token1.symbol().call().await?;
+                println!("Stored: {:?}", token1_symbol);
+                address_to_symbol.insert(token1_address, token1_symbol);
+            } else {
+                println!("Repeat of: {:?}", address_to_symbol.get(&token1_address).unwrap_or(&"Unknown".to_string()));
+            }
+            
+
+            // let ierc20_token0 = IERC20::new(token0_address, provider.clone());
+            // let ierc20_token1 = IERC20::new(token1_address, provider.clone());
+            // println!("Token 0: {:?}", ierc20_token0.symbol().call().await?);
+            // println!("Token 1: {:?}", ierc20_token1.symbol().call().await?);
 
     
             println!("Sender: {:?}", swap.sender);
