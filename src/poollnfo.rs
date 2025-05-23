@@ -12,6 +12,7 @@ pub struct PoolInfo {
     token0_symbol: String,
     token1_symbol: String,
     swaps_tracked: usize,
+    fee: u32,
 
     // // needed
     // fee: u32,
@@ -28,13 +29,16 @@ impl PoolInfo {
         token0_symbol: String,
         token1_symbol: String,
         swaps_tracked: usize,
+        fee: u32,    
     ) -> Self {
+        let fee_percent = fee as f64 / 10000.0;
+
         let pool_name = if token0_symbol.is_empty() || token1_symbol.is_empty() {
             format!("Pool-{:?}", pool_address)
         } else if token0_symbol < token1_symbol {
-            format!("{}/{}", token0_symbol, token1_symbol)
+            format!("{}/{} ({}%)", token0_symbol, token1_symbol, fee_percent)
         } else {
-            format!("{}/{}", token1_symbol, token0_symbol)
+            format!("{}/{} ({}%)", token1_symbol, token0_symbol, fee_percent)
         };
 
         PoolInfo {
@@ -44,6 +48,7 @@ impl PoolInfo {
             token1,
             token0_symbol,
             token1_symbol,
+            fee,
             swaps_tracked,
         }
     }
