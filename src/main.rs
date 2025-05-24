@@ -61,38 +61,36 @@ async fn main() -> Result<()> {
     println!("Uniswap tracker starting...");
     io::stdout().flush()?;
 
-    // get latest block
-    let latest_block = provider.get_block_number().await?;
-    println!("Latest block: {}", latest_block);
+    // // get latest block
+    // let latest_block = provider.get_block_number().await?;
+    // println!("Latest block: {}", latest_block);
     
-    // get curr block - x
-    let from_block = if latest_block > BLOCKS_TO_TRACK {
-        latest_block - BLOCKS_TO_TRACK
-    } else {
-        0
-    };
+    // // get curr block - x
+    // let from_block = if latest_block > BLOCKS_TO_TRACK {
+    //     latest_block - BLOCKS_TO_TRACK
+    // } else {
+    //     0
+    // };
     
-    println!("Fetching logs from block {} to {}", from_block, latest_block);
+    // println!("Fetching logs from block {} to {}", from_block, latest_block);
 
 
     let events = vec![
         Swap::SIGNATURE_HASH
     ];
 
-    let range_filter: Filter = Filter::new().
-        from_block(from_block)
-        .to_block(latest_block)
-        .event_signature(events.clone());
+    // let range_filter: Filter = Filter::new().
+    //     from_block(from_block)
+    //     .to_block(latest_block)
+    //     .event_signature(events.clone());
 
-    let logs = provider.get_logs(&range_filter).await?;
+    // let logs = provider.get_logs(&range_filter).await?;
 
     let ws_filter = Filter::new().event_signature(events);
 
-    let mut ws_subcription = ws_provider.subscribe_logs(&ws_filter).await?;
+    let ws_subcription = ws_provider.subscribe_logs(&ws_filter).await?;
 
     let mut ws_stream = ws_subcription.into_stream();
-
-    let mut event_count = 0;
 
     // println!("{:?}", logs);
     // println!("Num Uniswap swap events: {}", logs.len());
@@ -104,18 +102,70 @@ async fn main() -> Result<()> {
     let mut pool_address_to_index: HashMap<Address, u16> = HashMap::new();
     let mut pool_storage: Vec<PoolInfo> = Vec::new();
 
-    let start_time = Instant::now();
-
     //stream until interrupted
     loop {
         match tokio::time::timeout(Duration::from_secs(3), ws_stream.next()).await {
-            Ok(Some(log_result)) => {
-                if let Ok(decode) = log_result.log_decode::<Swap>() {
-                    let block_number = log_result.block_number;
+            Ok(Some(log)) => {
+                if let Ok(decode) = log.log_decode::<Swap>() {
+                    let block_number = log.block_number;
 
                     println!("block number: {:?}", block_number);
                     println!("swap detected");
-                    event_count += 1;
+
+                    let swap = decode.data();
+                    let pool_address = log.address();
+
+
+                    let contract = IUniswapV3PoolInstance::new(pool_address, provider.clone());
+
+                    // acquire token addresses + symbols
+                    let token0_address = contract.token0().call().await?;
+                    let token1_address = contract.token1().call().await?;
+                    if !token_address_to_symbol.contains_key(&token0_address) {
+                        let ierc20_token0 = IERC20::new(token0_address, provider.clone());
+                        let token0_symbol = ierc20_token0.symbol().call().await?;
+                        token_address_to_symbol.insert(token0_address, token0_symbol);
+                    }
+                    if !token_address_to_symbol.contains_key(&token1_address) {
+                        let ierc20_token1 = IERC20::new(token1_address, provider.clone());
+                        let token1_symbol = ierc20_token1.symbol().call().await?;
+                        token_address_to_symbol.insert(token1_address, token1_symbol);
+                    }
+
+
+
+                    // add structs to pool storage (new pool)
+                    if !pool_address_to_index.contains_key(&pool_address) {
+                        pool_address_to_index.insert(pool_address, pool_storage.len() as u16);
+
+                        let token0_symbol = token_address_to_symbol
+                            .get(&token0_address)
+                            .cloned()
+                            .unwrap_or_else(|| String::from("Unknown"));
+                            
+                        let token1_symbol = token_address_to_symbol
+                            .get(&token1_address)
+                            .cloned()
+                            .unwrap_or_else(|| String::from("Unknown"));
+
+                        
+                        let fee_uint = contract.fee().call().await?;
+                        let fee = fee_uint.to::<u32>();
+
+                        let new_pool = PoolInfo::new(pool_address, token0_address, token1_address, token0_symbol, token1_symbol, 1, fee);
+                        pool_storage.push(new_pool);
+                    } else {
+                        // implement functionality for pool updates
+                        if let Some(&index) = pool_address_to_index.get(&pool_address) {
+                            let pool = &mut pool_storage[index as usize];
+                            
+                            // Update the pool with the new swap information
+                            pool.increment_swap_count();
+                        } else {
+                            println!("Error: Pool found in HashMap but no index available");
+                        }
+
+                    }
                 }
             },
             Ok(None) => {
@@ -123,7 +173,11 @@ async fn main() -> Result<()> {
                 break;
             },
             Err(_) => {
-                println!(".");
+                println!("=============================================");
+                    for pool in &pool_storage {
+                        println!("{:?} = {:?}" ,pool.get_pool_name(), pool.get_swap_count());
+                    }
+                println!("=============================================");
                 io::stdout().flush();
             }
         }
