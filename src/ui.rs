@@ -69,7 +69,7 @@ impl TerminalUI {
 
 impl Widget for &TerminalUI {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let title = Line::from(" Counter App Tutorial ".bold());
+        let title = Line::from(" Uniswap v3 Swap Terminal ".bold());
         let instructions = Line::from(vec![
             " Decrement ".into(),
             "<Left>".blue().bold(),
@@ -78,18 +78,27 @@ impl Widget for &TerminalUI {
             " Quit ".into(),
             "<Q> ".blue().bold(),
         ]);
+
+        let header = Line::from(vec![
+            "Pool".bold().yellow(),
+            " | ".into(),
+            "Swaps Tracked".bold().yellow(),
+        ]);
+
         let block = Block::bordered()
             .title(title.centered())
             .title_bottom(instructions.centered())
             .border_set(border::THICK);
 
-        let counter_text = Text::from(vec![Line::from(vec![
-            "Value: ".into(),
-            self.counter.to_string().yellow(),
-        ])]);
+        let content_text = Text::from(vec![
+            header,
+            Line::from(vec![
+                "Value: ".into(),
+                self.counter.to_string().yellow(),
+            ])
+        ]);
 
-        Paragraph::new(counter_text)
-            .centered()
+        Paragraph::new(content_text)
             .block(block)
             .render(area, buf);
     }
