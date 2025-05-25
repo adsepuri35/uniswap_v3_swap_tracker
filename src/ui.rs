@@ -11,12 +11,14 @@ use ratatui::{
 };
 use anyhow::Result;
 
-
+//file imports
+use crate::poollnfo::PoolInfo;
 
 #[derive(Debug, Default)]
 pub struct TerminalUI {
-    counter: u8,
     exit: bool,
+    pools: Vec<PoolInfo>,
+    total_swaps: usize,
 }
 
 impl TerminalUI {
@@ -47,8 +49,6 @@ impl TerminalUI {
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
             KeyCode::Char('q') => self.exit(),
-            KeyCode::Left => self.decrement_counter(),
-            KeyCode::Right => self.increment_counter(),
             _ => {}
         }
     }
@@ -57,13 +57,10 @@ impl TerminalUI {
         self.exit = true;
     }
 
-    fn increment_counter(&mut self) {
-        self.counter += 1;
-    }
-
-    fn decrement_counter(&mut self) {
-        self.counter -= 1;
-    }
+    // pub fn update_pools(&mut self, pools: Vec<PoolInfo>) {
+    //     self.pools = pools;
+    //     self.total_swaps = self.pools.iter().map(|p| *p.get_swap_count()).sum();
+    // }
 
 }
 
@@ -71,10 +68,6 @@ impl Widget for &TerminalUI {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let title = Line::from(" Uniswap v3 Swap Terminal ".bold());
         let instructions = Line::from(vec![
-            " Decrement ".into(),
-            "<Left>".blue().bold(),
-            " Increment ".into(),
-            "<Right>".blue().bold(),
             " Quit ".into(),
             "<Q> ".blue().bold(),
         ]);
@@ -90,13 +83,32 @@ impl Widget for &TerminalUI {
             .title_bottom(instructions.centered())
             .border_set(border::THICK);
 
-        let content_text = Text::from(vec![
-            header,
-            Line::from(vec![
-                "Value: ".into(),
-                self.counter.to_string().yellow(),
-            ])
-        ]);
+
+        // lines for each pool
+        let mut content_lines = vec![header];
+
+
+        // display total stats
+        content_lines.push(Line::from(vec![
+            "Total Swaps: ".into(),
+            self.total_swaps.to_string().bold(),
+        ]));
+
+        // add lines for each pool
+        for pool in &self.pools {
+            content_lines.push(Line::from(vec![
+                pool.get_pool_name().into(),
+                " | ".into(),
+                pool.get_swap_count().to_string().green(),
+            ]));
+        }
+
+        // if no pools -> show message
+        if self.pools.is_empty() {
+            content_lines.push(Line::from("No pools detected yet. Waiting for events...".italic()));
+        }
+
+        let content_text = Text::from(content_lines);
 
         Paragraph::new(content_text)
             .block(block)

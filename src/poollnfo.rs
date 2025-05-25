@@ -48,8 +48,8 @@ impl PoolInfo {
             token1,
             token0_symbol,
             token1_symbol,
-            fee,
             swaps_tracked,
+            fee
         }
     }
 
