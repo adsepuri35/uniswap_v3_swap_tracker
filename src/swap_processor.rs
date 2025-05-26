@@ -17,6 +17,13 @@ pub async fn process_swap_event<P: Provider + Clone> (
     pool_address_to_index: &mut HashMap<Address, u16>,
     pool_storage: &mut Vec<PoolInfo>,
 ) -> Result<()> {
+    let data_bytes = &log.data().data;  // Access the bytes field directly
+    
+    if data_bytes.len() < 128 {  // Check length on bytes
+        return Err(anyhow::anyhow!("Swap event data too short: {}", data_bytes.len()));
+    }
+    
+    // Wrap critical sections in better error handling
     let pool_address = log.address();
 
 

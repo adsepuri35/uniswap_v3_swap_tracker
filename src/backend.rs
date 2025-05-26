@@ -7,6 +7,8 @@ use amms::amms::uniswap_v3::{IUniswapV3Factory::IUniswapV3FactoryInstance, IUnis
 use futures::StreamExt;
 // use reqwest::Client;
 use tokio::sync::mpsc;
+use std::fs::OpenOptions;
+use std::io::BufWriter;
 
 
 // other file imports
@@ -102,13 +104,36 @@ pub async fn run_ws_backend(tx: mpsc::Sender<Vec<PoolInfo>>) -> Result<()> {
 
                     let swap = decode.data();
 
-                    process_swap_event(
+                    match process_swap_event(
                         &log,
                         provider.clone(),
                         &mut token_address_to_symbol,
                         &mut pool_address_to_index,
                         &mut pool_storage
-                    ).await?;
+                    ).await {
+                        Ok(_) => {
+                            // Only send on success
+                            tx.send(pool_storage.clone()).await?;
+                        },
+                        Err(e) => {
+                            let file_result = OpenOptions::new()
+                                .create(true)
+                                .append(true)
+                                .open("swap_errors.log");
+                            
+                            match file_result {
+                                Ok(file) => {
+                                    // Write to the log file
+                                    let mut writer = BufWriter::new(file);
+                                    writeln!(writer, "Error processing swap: {}", e).ok();
+                                },
+                                Err(file_err) => {
+                                    // If we can't open the file, write to stderr directly
+                                    eprintln!("Error processing swap: {} (couldn't open log: {})", e, file_err);
+                                }
+                            }
+                        }
+                    }
 
                     // send updated pools
                     tx.send(pool_storage.clone()).await?;
