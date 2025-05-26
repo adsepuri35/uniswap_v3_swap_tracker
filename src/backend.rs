@@ -15,6 +15,7 @@ use std::io::BufWriter;
 use crate::ierc20::IERC20;
 use crate::poollnfo::PoolInfo;
 use crate::swap_processor::process_swap_event;
+use crate::tokenInfo::TokenInfo;
 
 
 
@@ -88,7 +89,7 @@ pub async fn run_ws_backend(tx: mpsc::Sender<Vec<PoolInfo>>) -> Result<()> {
     //     println!("{:#?}", logs[0])
     // }
 
-    let mut token_address_to_symbol: HashMap<Address, String> = HashMap::new();
+    let mut token_info_map: HashMap<Address, TokenInfo> = HashMap::new();
     let mut pool_address_to_index: HashMap<Address, u16> = HashMap::new();
     let mut pool_storage: Vec<PoolInfo> = Vec::new();
 
@@ -107,7 +108,7 @@ pub async fn run_ws_backend(tx: mpsc::Sender<Vec<PoolInfo>>) -> Result<()> {
                     match process_swap_event(
                         &log,
                         provider.clone(),
-                        &mut token_address_to_symbol,
+                        &mut token_info_map,
                         &mut pool_address_to_index,
                         &mut pool_storage
                     ).await {

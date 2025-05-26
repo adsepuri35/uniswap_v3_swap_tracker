@@ -162,10 +162,28 @@ impl TerminalUI {
 }
 impl Widget for &TerminalUI {
     fn render(self, area: Rect, buf: &mut Buffer) {
+
+        let instructions = Line::from(vec![
+            " Up ".into(),
+            "<↑>".blue().bold(),
+            " Down ".into(),
+            "<↓>".blue().bold(),
+            " Page Up ".into(),
+            "<PgUp>".blue().bold(),
+            " Page Down ".into(),
+            "<PgDn>".blue().bold(),
+            " Quit ".into(),
+            "<Q>".blue().bold(),
+        ]);
+
+        let title = Line::from(" Uniswap Swap Tracker ".bold());
+
         // Create a block for the UI
         let block = Block::bordered()
-            .title("Uniswap Swap Tracker")
+            .title(title.centered())
+            .title_bottom(instructions.centered())
             .border_type(ratatui::widgets::BorderType::Rounded);
+
         
         // Render the block in the area
         block.clone().render(area, buf);
@@ -197,7 +215,7 @@ impl Widget for &TerminalUI {
         let max_visible = list_area.height as usize;
         
         // Calculate the start index based on scroll offset
-        let start_idx = if pool_count <= max_visible {
+        let start_idx: usize = if pool_count <= max_visible {
             0 // Show from beginning if all fit
         } else {
             // Otherwise, use scroll offset to determine starting point
@@ -244,17 +262,5 @@ impl Widget for &TerminalUI {
                     buf
                 );
         }
-
-        let help_text = "↑/k: Up | ↓/j: Down | PgUp/PgDn: Page | Home/End: Jump | q: Quit";
-        Paragraph::new(Text::from(help_text))
-            .render(
-                Rect::new(
-                    inner_area.x,
-                    inner_area.y + inner_area.height - 1,
-                    inner_area.width.min(help_text.len() as u16),
-                    1
-                ),
-                buf
-            );
     }
 }
