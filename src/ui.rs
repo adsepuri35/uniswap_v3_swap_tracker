@@ -16,20 +16,67 @@ use tokio::time::Duration;
 //file imports
 use crate::poollnfo::PoolInfo;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct TerminalUI {
     exit: bool,
     pools: Vec<PoolInfo>,
     total_swaps: usize,
+    rx: Option<Receiver<Vec<PoolInfo>>>,
 }
 
-
+impl Default for TerminalUI {
+    fn default() -> Self {
+        Self {
+            exit: false,
+            pools: Vec::new(),
+            total_swaps: 0,
+            rx: None,
+        }
+    }
+}
 
 impl TerminalUI {
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         while !self.exit {
+            // First, check for events
+            let handle_events = if let Some(rx) = &mut self.rx {
+                // Try to receive without blocking UI
+                event::poll(std::time::Duration::from_millis(10))?
+            } else {
+                // Always check events if we don't have a channel
+                self.handle_events()?;
+                false // Already handled events
+            };
+            
+            // Handle events if needed (separate from channel checking)
+            if handle_events {
+                self.handle_events()?;
+            }
+            
+            // Now check for channel updates
+            if let Some(rx) = &mut self.rx {
+                // Check channel for updates
+                match rx.try_recv() {
+                    Ok(pools) => {
+                        // Update the UI with new pool data
+                        self.pools = pools;
+                        self.total_swaps = self.pools.iter().map(|p| *p.get_swap_count()).sum();
+                    }
+                    Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
+                        // No data available, that's fine
+                    }
+                    Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                        // Channel closed, might want to handle this
+                        println!("Channel disconnected");
+                    }
+                }
+            }
+            
+            // Draw UI
             terminal.draw(|frame| self.draw(frame))?;
-            self.handle_events()?;
+            
+            // Small sleep to prevent CPU spinning
+            std::thread::sleep(std::time::Duration::from_millis(50));
         }
         Ok(())
     }
@@ -64,10 +111,14 @@ impl TerminalUI {
     pub fn is_exiting(&self) -> bool {
         self.exit
     }
-
-    pub fn update_pools(&mut self, pools: Vec<PoolInfo>) {
-        self.pools = pools;
-        self.total_swaps = self.pools.iter().map(|p| *p.get_swap_count()).sum();
+    
+    pub fn with_receiver(rx: Receiver<Vec<PoolInfo>>) -> Self {
+        Self {
+            exit: false,
+            pools: Vec::new(),
+            total_swaps: 0,
+            rx: Some(rx),
+        }
     }
 
 }

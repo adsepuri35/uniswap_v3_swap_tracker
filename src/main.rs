@@ -42,32 +42,51 @@ async fn main() -> Result<()> {
     // ratatui::restore();
     // ui_result
 
-
-
-    // backend implementation
-    let (tx, mut rx) = mpsc::channel::<Vec<PoolInfo>>(100);
+    let (tx, rx) = mpsc::channel::<Vec<PoolInfo>>(100);
     
-    // Create a background task to print received data
-    let receive_handle = tokio::spawn(async move {
-        println!("Starting receiver...");
-        // let mut count = 0;
-        while let Some(pools) = rx.recv().await {
-            // count += 1;
-            // println!("RECEIVER: Got update #{}: {} pools", count, pools.len());
-            // for pool in &pools {
-            //     println!("RECEIVER:   - {}: {} swaps", pool.get_pool_name(), pool.get_swap_count());
-            // }
-            // Force flush stdout
-            io::stdout().flush().unwrap();
+    // Start the backend in a separate task
+    let backend_handle = tokio::spawn(async move {
+        match crate::backend::run_ws_backend(tx).await {
+            Ok(_) => println!("Backend finished successfully"),
+            Err(e) => eprintln!("Backend error: {}", e),
         }
     });
     
-    // Call the backend function with the sender
-    let result = crate::backend::run_ws_backend(tx).await;
+    // Initialize the UI with the receiver
+    let mut terminal = ratatui::init();
+    let ui_result = TerminalUI::with_receiver(rx).run(&mut terminal);
+    ratatui::restore();
     
-    // Cancel the receiver once backend is done
-    receive_handle.abort();
+    // When UI exits, stop the backend
+    backend_handle.abort();
     
-    result
+    ui_result
+
+
+    // backend implementation
+    // let (tx, mut rx) = mpsc::channel::<Vec<PoolInfo>>(100);
+    
+    // // Create a background task to print received data
+    // let receive_handle = tokio::spawn(async move {
+    //     println!("Starting receiver...");
+    //     // let mut count = 0;
+    //     while let Some(pools) = rx.recv().await {
+    //         // count += 1;
+    //         // println!("RECEIVER: Got update #{}: {} pools", count, pools.len());
+    //         // for pool in &pools {
+    //         //     println!("RECEIVER:   - {}: {} swaps", pool.get_pool_name(), pool.get_swap_count());
+    //         // }
+    //         // Force flush stdout
+    //         io::stdout().flush().unwrap();
+    //     }
+    // });
+    
+    // // Call the backend function with the sender
+    // let result = crate::backend::run_ws_backend(tx).await;
+    
+    // // Cancel the receiver once backend is done
+    // receive_handle.abort();
+    
+    // result
 
 }

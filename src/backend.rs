@@ -55,7 +55,7 @@ pub async fn run_ws_backend(tx: mpsc::Sender<Vec<PoolInfo>>) -> Result<()> {
     let mut ws_stream = ws_subcription.into_stream();
 
 
-    println!("Uniswap tracker starting...");
+    // println!("Uniswap tracker starting...");
     io::stdout().flush()?;
 
     // // get latest block
@@ -97,8 +97,8 @@ pub async fn run_ws_backend(tx: mpsc::Sender<Vec<PoolInfo>>) -> Result<()> {
                 if let Ok(decode) = log.log_decode::<Swap>() {
                     let block_number = log.block_number;
 
-                    println!("block number: {:?}", block_number);
-                    println!("swap detected");
+                    // println!("block number: {:?}", block_number);
+                    // println!("swap detected");
 
                     let swap = decode.data();
 
@@ -119,17 +119,17 @@ pub async fn run_ws_backend(tx: mpsc::Sender<Vec<PoolInfo>>) -> Result<()> {
                 break;
             },
             Err(_) => {
-                println!("=============================================");
-                    for pool in &pool_storage {
-                        println!("{:?} = {:?}" ,pool.get_pool_name(), pool.get_swap_count());
-                    }
-                println!("=============================================");
+                // println!("=============================================");
+                //     for pool in &pool_storage {
+                //         println!("{:?} = {:?}" ,pool.get_pool_name(), pool.get_swap_count());
+                //     }
+                // println!("=============================================");
                 io::stdout().flush();
 
                 if !pool_storage.is_empty() {
-                    println!("Attempting to send {} pools through channel", pool_storage.len());
+                    // println!("Attempting to send {} pools through channel", pool_storage.len());
                     match tx.send(pool_storage.clone()).await {
-                        Ok(_) => println!("Successfully sent pools through channel"),
+                        Ok(_) => {},
                         Err(e) => println!("Failed to send pools: {}", e),
                     }
                     tx.send(pool_storage.clone()).await?;
