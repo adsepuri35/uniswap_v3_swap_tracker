@@ -1,6 +1,6 @@
 use std::ops::Add;
 
-use alloy::core::primitives::Address;
+use alloy::core::primitives::{Address, U160};
 
 use crate::tokenInfo::TokenInfo;
 
@@ -17,7 +17,8 @@ pub struct PoolInfo {
     fee: u32,
 
     // price stats
-    // current_price: f64,
+    current_price: f64,
+    sqrt_price_X96: U160,
 
     // // needed
     // tick_spacing: i32,
@@ -33,6 +34,8 @@ impl PoolInfo {
         token1_info: TokenInfo,
         swaps_tracked: usize,
         fee: u32,    
+        current_price: f64,
+        sqrt_price_X96: U160,
     ) -> Self {
         let fee_percent = fee as f64 / 10000.0;
 
@@ -55,7 +58,9 @@ impl PoolInfo {
             token0_info,
             token1_info,
             swaps_tracked,
-            fee
+            fee,
+            current_price,
+            sqrt_price_X96,
         }
     }
 
@@ -69,5 +74,29 @@ impl PoolInfo {
 
     pub fn get_pool_name(&self) -> &str {
         &self.pool_name
+    }
+
+    pub fn get_current_price(&self) -> f64 {
+        self.current_price
+    }
+
+    pub fn update_current_price(&mut self, new_price: f64) {
+        self.current_price = new_price;
+    }
+
+    pub fn get_token0_decimals(&self) -> u8 {
+        self.token0_info.get_decimals()
+    }
+    
+    pub fn get_token1_decimals(&self) -> u8 {
+        self.token1_info.get_decimals()
+    }
+
+    pub fn get_sqrt_price_X96(&self) -> U160 {
+        self.sqrt_price_X96
+    }
+
+    pub fn update_sqrt_price_X96(&mut self, new_sqrt_price: U160) {
+        self.sqrt_price_X96 = new_sqrt_price;
     }
 }

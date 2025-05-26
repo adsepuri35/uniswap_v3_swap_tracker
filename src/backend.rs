@@ -98,8 +98,7 @@ pub async fn run_ws_backend(tx: mpsc::Sender<Vec<PoolInfo>>) -> Result<()> {
         match tokio::time::timeout(Duration::from_secs(3), ws_stream.next()).await {
             Ok(Some(log)) => {
                 if let Ok(decode) = log.log_decode::<Swap>() {
-                    let block_number = log.block_number;
-
+                    // let block_number = log.block_number;
                     // println!("block number: {:?}", block_number);
                     // println!("swap detected");
 

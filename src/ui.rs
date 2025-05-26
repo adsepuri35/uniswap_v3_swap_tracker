@@ -197,6 +197,8 @@ impl Widget for &TerminalUI {
         // Create header with total stats
         let header = format!("Total Pools: {} | Total Swaps: {}", self.pools.len(), self.total_swaps);
         let header_text = Text::from(header);
+
+        
         
         // Render header
         Paragraph::new(header_text)
@@ -235,12 +237,33 @@ impl Widget for &TerminalUI {
             if y_pos >= list_area.y + list_area.height {
                 break;
             }
+
+            let price_display = {
+                let price = pool.get_current_price();
+
+                if price == 0.0 {
+                    "Price unknown".to_string()
+                } else if price >= 1_000_000.0 {
+                    format!("${:.2}M", price / 1_000_000.0)
+                } else if price >= 1000.0 {
+                    format!("${:.2}", price)
+                } else if price >= 1.0 {
+                    format!("${:.4}", price)
+                } else if price >= 0.01 {
+                    format!("${:.6}", price)
+                } else if price >= 0.00001 {
+                    format!("${:.8}", price)
+                } else {
+                    format!("${:.10}", price)
+                }
+            };
             
             let line = format!(
-                "{:3}. {:20} {:10} swaps", 
+                "{:3}. {:30} | {:5} swaps | price: {:20}", 
                 start_idx + i + 1,
                 pool.get_pool_name(),
-                pool.get_swap_count()
+                pool.get_swap_count(),
+                price_display,
             );
             
             // Render this pool line

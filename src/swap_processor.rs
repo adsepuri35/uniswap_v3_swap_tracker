@@ -1,9 +1,12 @@
 
-use alloy::{core::primitives::Address, providers::{Provider}};
+use alloy::{core::primitives::{Address, U160, U256}, providers::{Provider}};
 use anyhow::Result;
 use std::{collections::HashMap};
 use amms::amms::uniswap_v3::{IUniswapV3Pool::IUniswapV3PoolInstance, IUniswapV3PoolEvents::Swap};
 // use reqwest::Client;
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::str::FromStr;
 
 
 // other file imports
@@ -33,9 +36,17 @@ pub async fn process_swap_event<P: Provider + Clone> (
 
     let amount0 = i128::try_from(swap_event.data().amount0).unwrap_or_default();
     let amount1 = i128::try_from(swap_event.data().amount1).unwrap_or_default();
-    let sqrt_price_x96 = u128::try_from(swap_event.data().sqrtPriceX96).unwrap_or_default();
+    let sqrt_price_x96: U160 = swap_event.data().sqrtPriceX96.into();
     let liquidity = swap_event.data().liquidity;
-    let tick = i32::try_from(swap_event.data().tick).unwrap_or_default();
+
+    let tick = match swap_event.data().tick.try_into() {
+        Ok(t) => t,
+        Err(_) => {
+            // Log this issue
+            println!("Warning: Missing tick in swap event for pool {}", pool_address);
+            0 // Default tick, which will give a price of 1.0001^0 = 1.0
+        }
+    };
 
 
 
@@ -59,7 +70,7 @@ pub async fn process_swap_event<P: Provider + Clone> (
 
     // add structs to pool storage (new pool)
     if !pool_address_to_index.contains_key(&pool_address) {
-        process_new_pool(pool_address, token0_address, token1_address, provider, contract, token_info_map, pool_address_to_index, pool_storage).await?;
+        process_new_pool(pool_address, token0_address, token1_address, provider, contract, token_info_map, pool_address_to_index, pool_storage,amount0, amount1, sqrt_price_x96, liquidity, tick).await?;
     } else {
         update_existing_pool(pool_address, pool_address_to_index, pool_storage, amount0, amount1, sqrt_price_x96, liquidity, tick)?;
     }
@@ -76,20 +87,23 @@ async fn process_new_pool<P: Provider + Clone>(
     token_info_map: &mut HashMap<Address, TokenInfo>,
     pool_address_to_index: &mut HashMap<Address, u16>,
     pool_storage: &mut Vec<PoolInfo>,
+    amount0: i128,
+    amount1: i128,
+    sqrt_price_x96: U160,
+    liquidity: u128,
+    tick: i32,
 ) -> Result<()> {
     pool_address_to_index.insert(pool_address, pool_storage.len() as u16);
-
-    let token0_symbol = token_info_map.get(&token0_address).unwrap().get_symbol();
-    let token0_decimal = token_info_map.get(&token0_address).unwrap().get_decimals();
-        
-    let token1_symbol = token_info_map.get(&token1_address).unwrap().get_symbol();
-    let token1_decimal = token_info_map.get(&token1_address).unwrap().get_decimals();
-
     
     let fee_uint = contract.fee().call().await?;
     let fee = fee_uint.to::<u32>();
 
-    let new_pool = PoolInfo::new(pool_address, token0_address, token1_address, token_info_map.get(&token0_address).unwrap().clone(), token_info_map.get(&token1_address).unwrap().clone(), 1, fee);
+    // calculate current price for pool
+    let token0_decimals = token_info_map.get(&token0_address).unwrap().get_decimals();
+    let token1_decimals = token_info_map.get(&token1_address).unwrap().get_decimals();
+    let current_price = calculate_price_from_sqrt_price_x96(sqrt_price_x96, token0_decimals, token1_decimals);
+
+    let new_pool = PoolInfo::new(pool_address, token0_address, token1_address, token_info_map.get(&token0_address).unwrap().clone(), token_info_map.get(&token1_address).unwrap().clone(), 1, fee, current_price, sqrt_price_x96);
     pool_storage.push(new_pool);
 
     Ok(())
@@ -101,15 +115,23 @@ fn update_existing_pool(
     pool_storage: &mut Vec<PoolInfo>,
     amount0: i128,
     amount1: i128,
-    sqrt_price_x96: u128,
+    sqrt_price_x96: U160,
     liquidity: u128,
     tick: i32,
 ) -> Result<()> {
     if let Some(&index) = pool_address_to_index.get(&pool_address) {
         let pool = &mut pool_storage[index as usize];
         
-        // Update the pool with the new swap information
+        // Update the pool with new info
         pool.increment_swap_count();
+
+        // update price
+        let token0_decimals = pool.get_token0_decimals();
+        let token1_decimals = pool.get_token1_decimals();
+        let new_price = calculate_price_from_sqrt_price_x96(sqrt_price_x96, token0_decimals, token1_decimals);
+        pool.update_current_price(new_price);
+        pool.update_sqrt_price_X96(sqrt_price_x96);
+
     } else {
         println!("Error: Pool found in HashMap but no index available");
     }
@@ -119,29 +141,61 @@ fn update_existing_pool(
 
 
 
-pub fn calculate_price_from_sqrt_price_x96(sqrt_price_x96: u128, token0_decimals: u8, token1_decimals: u8) -> f64 {
-    // More numerically stable calculation
-    let sqrt_price = sqrt_price_x96 as f64;
-    let base = 2_f64.powi(96);
-    
-    // Square the sqrt price and divide by 2^192
-    let raw_price = (sqrt_price / base) * (sqrt_price / base);
-    
-    // Adjust for token decimals
-    let decimal_adjustment = 10_f64.powi((token1_decimals as i32) - (token0_decimals as i32));
-    
-    raw_price * decimal_adjustment
-}
+pub fn calculate_price_from_sqrt_price_x96(
+    sqrt_price_x96: U160,
+    decimals_token0: u8,
+    decimals_token1: u8,
+) -> f64 {
+    if sqrt_price_x96 == U160::ZERO {
+        return 0.0;
+    }
 
-async fn get_token_decimals<P: Provider + Clone>(
-    token_address: Address,
-    provider: P
-) -> Result<u8> {
-    // Use the IERC20 interface you already have
-    let token = IERC20::new(token_address, provider);
-    
-    // Standard ERC20 decimals() function call
-    let decimals = token.decimals().call().await?;
-    
-    Ok(decimals)
+    // Convert U160 to U256 to preserve full 160-bit precision
+    let mut limbs = [0u64; 4]; // Create an array of 4 u64 elements
+    let u160_limbs = sqrt_price_x96.into_limbs();
+    limbs[0] = u160_limbs[0];
+    limbs[1] = u160_limbs[1];
+    limbs[2] = u160_limbs[2];
+    // limbs[3] is already 0
+
+    let sqrt_price_u256 = U256::from_limbs(limbs);
+
+    // Convert U256 to f64 via string to avoid truncation
+    let sqrt_price_f64 = f64::from_str(&sqrt_price_u256.to_string()).unwrap_or(0.0);
+
+    // Compute raw price = (sqrtPriceX96 / 2^96)^2
+    let sqrt_scale = 2f64.powi(96);
+    let price = (sqrt_price_f64 / sqrt_scale).powi(2);
+
+    // Adjust for token decimals
+    let decimal_adjustment = 10f64.powi((decimals_token0 as i32) - (decimals_token1 as i32));
+    let adjusted_price = price * decimal_adjustment;
+
+    // Sanity check and clamp
+    if !adjusted_price.is_finite() || adjusted_price > 1e10 || adjusted_price < 1e-10 {
+        if let Ok(mut file) = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("price_calculation.log")
+        {
+            let _ = writeln!(
+                file,
+                "Extreme price: {} (sqrt: {}, raw: {}, adjustment: {})",
+                adjusted_price,
+                sqrt_price_u256,
+                price,
+                decimal_adjustment
+            );
+        }
+
+        if adjusted_price > 1e10 {
+            return 1e6;
+        } else if adjusted_price < 1e-10 && adjusted_price > 0.0 {
+            return 1e-6;
+        } else {
+            return 1.0;
+        }
+    }
+
+    adjusted_price
 }
