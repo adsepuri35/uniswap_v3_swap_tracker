@@ -12,6 +12,7 @@ use ratatui::{
 use anyhow::Result;
 use tokio::sync::mpsc::Receiver;
 use tokio::time::Duration;
+use std::cmp::min;
 
 //file imports
 use crate::poollnfo::PoolInfo;
@@ -22,6 +23,7 @@ pub struct TerminalUI {
     pools: Vec<PoolInfo>,
     total_swaps: usize,
     rx: Option<Receiver<Vec<PoolInfo>>>,
+    scroll_offset: usize,
 }
 
 impl Default for TerminalUI {
@@ -31,6 +33,7 @@ impl Default for TerminalUI {
             pools: Vec::new(),
             total_swaps: 0,
             rx: None,
+            scroll_offset: 0,
         }
     }
 }
@@ -67,7 +70,9 @@ impl TerminalUI {
                     }
                     Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
                         // Channel closed, might want to handle this
-                        println!("Channel disconnected");
+                        self.rx = None;
+                        // println!("Channel disconnected");
+                        // self.status_message = "Backend disconnected. Data will not update.".to_string();
                     }
                 }
             }
@@ -100,6 +105,38 @@ impl TerminalUI {
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
             KeyCode::Char('q') => self.exit(),
+
+
+            // Add scroll controls
+            KeyCode::Up | KeyCode::Char('k') => {
+                if self.scroll_offset > 0 {
+                    self.scroll_offset -= 1;
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                // Only scroll if there are more pools to show
+                if self.scroll_offset < self.pools.len().saturating_sub(1) {
+                    self.scroll_offset += 1;
+                }
+            }
+            KeyCode::PageUp => {
+                // Scroll a page up (10 lines at a time)
+                self.scroll_offset = self.scroll_offset.saturating_sub(10);
+            }
+            KeyCode::PageDown => {
+                // Scroll a page down (10 lines at a time)
+                let max_scroll = self.pools.len().saturating_sub(1);
+                self.scroll_offset = (self.scroll_offset + 10).min(max_scroll);
+            }
+            KeyCode::Home => {
+                // Scroll to the top
+                self.scroll_offset = 0;
+            }
+            KeyCode::End => {
+                // Scroll to the bottom
+                self.scroll_offset = self.pools.len().saturating_sub(1);
+            }
+
             _ => {}
         }
     }
@@ -111,66 +148,113 @@ impl TerminalUI {
     pub fn is_exiting(&self) -> bool {
         self.exit
     }
-    
+
     pub fn with_receiver(rx: Receiver<Vec<PoolInfo>>) -> Self {
         Self {
             exit: false,
             pools: Vec::new(),
             total_swaps: 0,
             rx: Some(rx),
+            scroll_offset: 0,
         }
     }
 
 }
-
 impl Widget for &TerminalUI {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let title = Line::from(" Uniswap v3 Swap Terminal ".bold());
-        let instructions = Line::from(vec![
-            " Quit ".into(),
-            "<Q> ".blue().bold(),
-        ]);
-
-        let header = Line::from(vec![
-            "Pool".bold().yellow(),
-            " | ".into(),
-            "Swaps Tracked".bold().yellow(),
-        ]);
-
+        // Create a block for the UI
         let block = Block::bordered()
-            .title(title.centered())
-            .title_bottom(instructions.centered())
-            .border_set(border::THICK);
-
-
-        // lines for each pool
-        let mut content_lines = vec![header];
-
-
-        // display total stats
-        content_lines.push(Line::from(vec![
-            "Total Swaps: ".into(),
-            self.total_swaps.to_string().bold(),
-        ]));
-
-        // add lines for each pool
-        for pool in &self.pools {
-            content_lines.push(Line::from(vec![
-                pool.get_pool_name().into(),
-                " | ".into(),
-                pool.get_swap_count().to_string().green(),
-            ]));
+            .title("Uniswap Swap Tracker")
+            .border_type(ratatui::widgets::BorderType::Rounded);
+        
+        // Render the block in the area
+        block.clone().render(area, buf);
+        
+        // Calculate inner area for content
+        let inner_area = block.inner(area);
+        
+        // Calculate how many pools we can display at once
+        let visible_height = inner_area.height as usize;
+        
+        // Create header with total stats
+        let header = format!("Total Pools: {} | Total Swaps: {}", self.pools.len(), self.total_swaps);
+        let header_text = Text::from(header);
+        
+        // Render header
+        Paragraph::new(header_text)
+            .render(Rect::new(inner_area.x, inner_area.y, inner_area.width, 1), buf);
+        
+        // Calculate available space for pool list
+        let list_area = Rect::new(
+            inner_area.x,
+            inner_area.y + 2, // +2 to leave space after header
+            inner_area.width,
+            inner_area.height.saturating_sub(2)
+        );
+        
+        // Determine visible range of pools based on scroll position
+        let pool_count = self.pools.len();
+        let max_visible = list_area.height as usize;
+        
+        // Calculate the start index based on scroll offset
+        let start_idx = if pool_count <= max_visible {
+            0 // Show from beginning if all fit
+        } else {
+            // Otherwise, use scroll offset to determine starting point
+            // Make sure we can always see a full page
+            let max_start = pool_count.saturating_sub(max_visible);
+            self.scroll_offset.min(max_start)
+        };
+        
+        // Create a visible slice of pools
+        let visible_pools = &self.pools[start_idx..min(start_idx + max_visible, pool_count)];
+        
+        // Render each visible pool
+        for (i, pool) in visible_pools.iter().enumerate() {
+            let y_pos = list_area.y + i as u16;
+            
+            // Skip if we're past the bottom of the visible area
+            if y_pos >= list_area.y + list_area.height {
+                break;
+            }
+            
+            let line = format!(
+                "{:3}. {:20} {:10} swaps", 
+                start_idx + i + 1,
+                pool.get_pool_name(),
+                pool.get_swap_count()
+            );
+            
+            // Render this pool line
+            Paragraph::new(Text::from(line))
+                .render(Rect::new(list_area.x, y_pos, list_area.width, 1), buf);
+        }
+        
+        // Render scroll indicators if needed
+        if pool_count > max_visible {
+            let scroll_info = format!("[{}/{}]", start_idx + 1, pool_count);
+            Paragraph::new(Text::from(scroll_info.clone()))
+                .render(
+                    Rect::new(
+                        inner_area.x + inner_area.width - scroll_info.len() as u16 - 2,
+                        inner_area.y + inner_area.height - 1,
+                        scroll_info.len() as u16,
+                        1
+                    ),
+                    buf
+                );
         }
 
-        // if no pools -> show message
-        if self.pools.is_empty() {
-            content_lines.push(Line::from("No pools detected yet. Waiting for events...".italic()));
-        }
-
-        let content_text = Text::from(content_lines);
-
-        Paragraph::new(content_text)
-            .block(block)
-            .render(area, buf);
+        let help_text = "↑/k: Up | ↓/j: Down | PgUp/PgDn: Page | Home/End: Jump | q: Quit";
+        Paragraph::new(Text::from(help_text))
+            .render(
+                Rect::new(
+                    inner_area.x,
+                    inner_area.y + inner_area.height - 1,
+                    inner_area.width.min(help_text.len() as u16),
+                    1
+                ),
+                buf
+            );
     }
 }

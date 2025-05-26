@@ -132,7 +132,6 @@ pub async fn run_ws_backend(tx: mpsc::Sender<Vec<PoolInfo>>) -> Result<()> {
                         Ok(_) => {},
                         Err(e) => println!("Failed to send pools: {}", e),
                     }
-                    tx.send(pool_storage.clone()).await?;
                 }
             }
         }
