@@ -57,10 +57,14 @@ impl TerminalUI {
         self.exit = true;
     }
 
-    // pub fn update_pools(&mut self, pools: Vec<PoolInfo>) {
-    //     self.pools = pools;
-    //     self.total_swaps = self.pools.iter().map(|p| *p.get_swap_count()).sum();
-    // }
+    pub fn is_exiting(&self) -> bool {
+        self.exit
+    }
+
+    pub fn update_pools(&mut self, pools: Vec<PoolInfo>) {
+        self.pools = pools;
+        self.total_swaps = self.pools.iter().map(|p| *p.get_swap_count()).sum();
+    }
 
 }
 

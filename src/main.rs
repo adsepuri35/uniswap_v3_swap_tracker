@@ -16,6 +16,8 @@ use ratatui::{
     DefaultTerminal, Frame,
 };
 // use reqwest::Client;
+use tokio::sync::mpsc;
+use tokio::time::{sleep, timeout};
 
 
 // other file imports
@@ -27,139 +29,42 @@ mod ui;
 use ui::TerminalUI;
 mod swap_processor;
 use swap_processor::process_swap_event;
+mod backend;
 
 
-const BLOCKS_TO_TRACK: u64 = 1;
+// const BLOCKS_TO_TRACK: u64 = 1;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // UI implmentation
-    let mut terminal = ratatui::init();
-    let app_result = TerminalUI::default().run(&mut terminal);
-    ratatui::restore();
-    app_result
-
-
+    // let mut terminal = ratatui::init();
+    // let ui_result = TerminalUI::default().run(&mut terminal);
+    // ratatui::restore();
+    // ui_result
 
 
 
 
     // backend implementation
-
-    // // load env variables
-    // dotenv().ok();
+let (tx, mut rx) = mpsc::channel::<Vec<PoolInfo>>(100);
     
-    // let api_key = match env::var("ALCHEMY_API_KEY") {
-    //     Ok(key) => key,
-    //     Err(e) => {
-    //         println!("Error loading API key: {}", e);
-    //         return Err(anyhow::anyhow!("Failed to load ALCHEMY_API_KEY from .env file"));
-    //     }
-    // };
+    // Create a background task to print received data
+    let receive_handle = tokio::spawn(async move {
+        println!("Starting receiver...");
+        while let Some(pools) = rx.recv().await {
+            println!("Received pool update: {} pools", pools.len());
+            for pool in &pools {
+                println!("  - {}: {} swaps", pool.get_pool_name(), pool.get_swap_count());
+            }
+        }
+    });
     
-    // // let client = Client::new();
-
-    // let url = format!("https://eth-mainnet.g.alchemy.com/v2/{}", api_key);
-    // let provider = ProviderBuilder::new()
-    //     .network::<Ethereum>()
-    //     .connect_http(url.parse()?);
-
+    // Call the backend function with the sender
+    let result = crate::backend::run_ws_backend(tx).await;
     
-    // // websocket provider
-    // let ws_url = format!("wss://eth-mainnet.g.alchemy.com/v2/{}", api_key);
-    // let ws_connect = WsConnect::new(&ws_url);
-    // let ws_provider = ProviderBuilder::new()
-    //     .network::<Ethereum>()
-    //     .connect_ws(ws_connect)
-    //     .await?;
-
-    // let events = vec![
-    //     Swap::SIGNATURE_HASH
-    // ];
-
-    // let ws_filter = Filter::new().event_signature(events);
-
-    // let ws_subcription = ws_provider.subscribe_logs(&ws_filter).await?;
-
-    // let mut ws_stream = ws_subcription.into_stream();
-
-
-    // println!("Uniswap tracker starting...");
-    // io::stdout().flush()?;
-
-    // // // get latest block
-    // // let latest_block = provider.get_block_number().await?;
-    // // println!("Latest block: {}", latest_block);
+    // Cancel the receiver once backend is done
+    receive_handle.abort();
     
-    // // // get curr block - x
-    // // let from_block = if latest_block > BLOCKS_TO_TRACK {
-    // //     latest_block - BLOCKS_TO_TRACK
-    // // } else {
-    // //     0
-    // // };
-    
-    // // println!("Fetching logs from block {} to {}", from_block, latest_block);
-
-    // // let range_filter: Filter = Filter::new().
-    // //     from_block(from_block)
-    // //     .to_block(latest_block)
-    // //     .event_signature(events.clone());
-
-    // // let logs = provider.get_logs(&range_filter).await?;
-
-    
-
-    // // println!("{:?}", logs);
-    // // println!("Num Uniswap swap events: {}", logs.len());
-    // // if logs.len() > 0 {
-    // //     println!("{:#?}", logs[0])
-    // // }
-
-    // let mut token_address_to_symbol: HashMap<Address, String> = HashMap::new();
-    // let mut pool_address_to_index: HashMap<Address, u16> = HashMap::new();
-    // let mut pool_storage: Vec<PoolInfo> = Vec::new();
-
-    // //stream until interrupted
-    // loop {
-    //     match tokio::time::timeout(Duration::from_secs(3), ws_stream.next()).await {
-    //         Ok(Some(log)) => {
-    //             if let Ok(decode) = log.log_decode::<Swap>() {
-    //                 let block_number = log.block_number;
-
-    //                 println!("block number: {:?}", block_number);
-    //                 println!("swap detected");
-
-    //                 let swap = decode.data();
-
-    //                 process_swap_event(
-    //                     &log,
-    //                     provider.clone(),
-    //                     &mut token_address_to_symbol,
-    //                     &mut pool_address_to_index,
-    //                     &mut pool_storage
-    //                 ).await?;
-    //             }
-    //         },
-    //         Ok(None) => {
-    //             println!("\nWebSocket stream ended unexpectedly");
-    //             break;
-    //         },
-    //         Err(_) => {
-    //             println!("=============================================");
-    //                 for pool in &pool_storage {
-    //                     println!("{:?} = {:?}" ,pool.get_pool_name(), pool.get_swap_count());
-    //                 }
-    //             println!("=============================================");
-    //             io::stdout().flush();
-    //         }
-    //     }
-    // }
-
-    // // for pool in &pool_storage {
-    // //     println!("{:?} = {:?}" ,pool.get_pool_name(), pool.get_swap_count());
-    // // }
-
-
-    // Ok(())
+    result
 
 }
