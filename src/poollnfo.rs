@@ -3,7 +3,7 @@ use std::ops::Add;
 use alloy::core::primitives::Address;
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PoolInfo {
     pool_address: Address,
     pool_name: String,

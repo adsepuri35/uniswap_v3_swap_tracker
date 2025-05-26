@@ -44,18 +44,21 @@ async fn main() -> Result<()> {
 
 
 
-
     // backend implementation
-let (tx, mut rx) = mpsc::channel::<Vec<PoolInfo>>(100);
+    let (tx, mut rx) = mpsc::channel::<Vec<PoolInfo>>(100);
     
     // Create a background task to print received data
     let receive_handle = tokio::spawn(async move {
         println!("Starting receiver...");
+        // let mut count = 0;
         while let Some(pools) = rx.recv().await {
-            println!("Received pool update: {} pools", pools.len());
-            for pool in &pools {
-                println!("  - {}: {} swaps", pool.get_pool_name(), pool.get_swap_count());
-            }
+            // count += 1;
+            // println!("RECEIVER: Got update #{}: {} pools", count, pools.len());
+            // for pool in &pools {
+            //     println!("RECEIVER:   - {}: {} swaps", pool.get_pool_name(), pool.get_swap_count());
+            // }
+            // Force flush stdout
+            io::stdout().flush().unwrap();
         }
     });
     

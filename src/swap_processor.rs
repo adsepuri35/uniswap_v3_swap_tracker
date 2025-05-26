@@ -1,9 +1,8 @@
 
-use alloy::{core::primitives::Address, network::Ethereum, providers::{self, Provider, ProviderBuilder, WsConnect}, rpc::types::{Filter, Topic}, sol_types::{SolEvent}};
+use alloy::{core::primitives::Address, providers::{Provider}};
 use anyhow::Result;
-use std::{env, collections::HashMap, time::{Duration, Instant}};
-use amms::amms::uniswap_v3::{IUniswapV3Factory::IUniswapV3FactoryInstance, IUniswapV3Pool::IUniswapV3PoolInstance, IUniswapV3PoolEvents::Swap};
-use futures::StreamExt;
+use std::{collections::HashMap};
+use amms::amms::uniswap_v3::{IUniswapV3Pool::IUniswapV3PoolInstance};
 // use reqwest::Client;
 
 

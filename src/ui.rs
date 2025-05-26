@@ -10,6 +10,8 @@ use ratatui::{
     DefaultTerminal, Frame,
 };
 use anyhow::Result;
+use tokio::sync::mpsc::Receiver;
+use tokio::time::Duration;
 
 //file imports
 use crate::poollnfo::PoolInfo;
@@ -20,6 +22,8 @@ pub struct TerminalUI {
     pools: Vec<PoolInfo>,
     total_swaps: usize,
 }
+
+
 
 impl TerminalUI {
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {

@@ -109,6 +109,9 @@ pub async fn run_ws_backend(tx: mpsc::Sender<Vec<PoolInfo>>) -> Result<()> {
                         &mut pool_address_to_index,
                         &mut pool_storage
                     ).await?;
+
+                    // send updated pools
+                    tx.send(pool_storage.clone()).await?;
                 }
             },
             Ok(None) => {
@@ -122,6 +125,15 @@ pub async fn run_ws_backend(tx: mpsc::Sender<Vec<PoolInfo>>) -> Result<()> {
                     }
                 println!("=============================================");
                 io::stdout().flush();
+
+                if !pool_storage.is_empty() {
+                    println!("Attempting to send {} pools through channel", pool_storage.len());
+                    match tx.send(pool_storage.clone()).await {
+                        Ok(_) => println!("Successfully sent pools through channel"),
+                        Err(e) => println!("Failed to send pools: {}", e),
+                    }
+                    tx.send(pool_storage.clone()).await?;
+                }
             }
         }
     }
