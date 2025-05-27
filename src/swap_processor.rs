@@ -109,7 +109,7 @@ async fn process_new_pool<P: Provider + Clone>(
     let amount1_scaled = amount1.abs() as f64 / 10f64.powi(token1_decimals as i32);
     let volume = amount0_scaled + amount1_scaled;
 
-    let new_pool = PoolInfo::new(pool_address, token0_address, token1_address, token_info_map.get(&token0_address).unwrap().clone(), token_info_map.get(&token1_address).unwrap().clone(), 1, fee, current_price, liquidity, tick_range, apr, volume);
+    let new_pool = PoolInfo::new(pool_address, token0_address, token1_address, token_info_map.get(&token0_address).unwrap().clone(), token_info_map.get(&token1_address).unwrap().clone(), 1, fee, current_price, 0.0, liquidity, tick_range, apr, volume);
     pool_storage.push(new_pool);
 
     Ok(())

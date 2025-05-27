@@ -233,13 +233,13 @@ impl Widget for &TerminalUI {
             Cell::from("APR"),
             Cell::from("Volume (ETH)"),
         ])
-        .style(ratatui::style::Style::default().add_modifier(ratatui::style::Modifier::BOLD));
+        .style(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD));
 
         // Create rows for each pool
         let rows: Vec<Row> = visible_pools.iter().enumerate().map(|(i, pool)| {
             let price_display = {
                 let price = pool.get_current_price();
-                if price == 0.0 {
+                let price_text = if price == 0.0 {
                     "Price unknown".to_string()
                 } else if price >= 1_000_000.0 {
                     format!("${:.2}M", price / 1_000_000.0)
@@ -253,7 +253,11 @@ impl Widget for &TerminalUI {
                     format!("${:.8}", price)
                 } else {
                     format!("${:.10}", price)
-                }
+                };
+
+                // Apply conditional styling
+                let color = pool.get_price_change_color();
+                Cell::from(price_text).style(ratatui::style::Style::default().fg(color))
             };
 
             let liquidity_display = {
@@ -308,7 +312,7 @@ impl Widget for &TerminalUI {
                 Cell::from("v3"),
                 Cell::from(format!("{:.2}%", pool.get_fee_percent())), // Fee
                 Cell::from(format!("{}", pool.get_swap_count())), // Swaps
-                Cell::from(price_display), // Price
+                price_display, // Price
                 Cell::from(liquidity_display), // Liquidity
                 Cell::from(format!("{}", lower_tick)), // Lower Tick
                 Cell::from(format!("{}", upper_tick)), // Upper Tick

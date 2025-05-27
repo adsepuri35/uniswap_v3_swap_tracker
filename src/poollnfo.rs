@@ -1,4 +1,4 @@
-use std::ops::{Add, DerefMut};
+use std::{ops::{Add, DerefMut}, thread::current};
 
 use alloy::core::primitives::{Address, U160};
 use amms::amms::GetTokenDecimalsBatchRequest::new;
@@ -17,6 +17,7 @@ pub struct PoolInfo {
     swaps_tracked: usize,
     fee: u32,
     current_price: f64,
+    prev_price: f64,
     liquidity: u128,
     tick_range: (i32, i32),
     current_apr: f64,
@@ -33,6 +34,7 @@ impl PoolInfo {
         swaps_tracked: usize,
         fee: u32,    
         current_price: f64,
+        prev_price: f64,
         liquidity: u128,
         tick_range: (i32, i32),
         current_apr: f64,
@@ -60,6 +62,7 @@ impl PoolInfo {
             swaps_tracked,
             fee,
             current_price,
+            prev_price,
             liquidity,
             tick_range,
             current_apr,
@@ -84,7 +87,18 @@ impl PoolInfo {
     }
 
     pub fn update_current_price(&mut self, new_price: f64) {
+        self.prev_price = self.current_price;
         self.current_price = new_price;
+    }
+
+    pub fn get_price_change_color(&self) -> ratatui::style::Color {
+        if self.current_price > self.prev_price && self.prev_price != 0.0 {
+            ratatui::style::Color::Green // Price increased
+        } else if self.current_price < self.prev_price {
+            ratatui::style::Color::Red // Price decreased
+        } else {
+            ratatui::style::Color::White // No change
+        }
     }
 
     pub fn get_token0_decimals(&self) -> u8 {
