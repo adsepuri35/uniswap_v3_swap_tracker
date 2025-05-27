@@ -173,7 +173,7 @@ impl Widget for &TerminalUI {
             " Page Down ".into(),
             "<PgDn>".blue().bold(),
             " Quit ".into(),
-            "<Q>".blue().bold(),
+            "<Q> ".blue().bold(),
         ]);
 
         let title = Line::from(" Uniswap Swap Tracker ".bold());
@@ -221,8 +221,9 @@ impl Widget for &TerminalUI {
 
         // Create table headers
         let headers = Row::new(vec![
-            Cell::from("Index"),
+            Cell::from("ID"),
             Cell::from("Pool Name"),
+            Cell::from("Protocol"),
             Cell::from("Fee"),
             Cell::from("Swaps"),
             Cell::from("Price"),
@@ -277,6 +278,7 @@ impl Widget for &TerminalUI {
             Row::new(vec![
                 Cell::from(format!("{}", start_idx + i + 1)), // Index
                 Cell::from(pool.get_pool_name().to_string()), // Pool Name
+                Cell::from("v3"),
                 Cell::from(format!("{:.2}%", pool.get_fee_percent())), // Fee
                 Cell::from(format!("{}", pool.get_swap_count())), // Swaps
                 Cell::from(price_display), // Price
@@ -291,13 +293,14 @@ impl Widget for &TerminalUI {
             rows, // Rows for the table
             vec![
                 Constraint::Length(6),  // Index
-                Constraint::Length(30), // Pool Name
+                Constraint::Length(20), // Pool Name
+                Constraint::Length(13q),  // Protocol
                 Constraint::Length(10), // Fee
                 Constraint::Length(10), // Swaps
-                Constraint::Length(15), // Price
-                Constraint::Length(15), // Liquidity
-                Constraint::Length(12), // Lower Tick
-                Constraint::Length(12), // Upper Tick
+                Constraint::Length(20), // Price
+                Constraint::Length(20), // Liquidity
+                Constraint::Length(15), // Lower Tick
+                Constraint::Length(15), // Upper Tick
             ],
         )
         .header(headers) // Add headers to the table
