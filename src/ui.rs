@@ -206,6 +206,9 @@ impl Widget for &TerminalUI {
             inner_area.height.saturating_sub(2),
         );
 
+        let mut sorted_pools = self.pools.clone();
+        sorted_pools.sort_by(|a, b| b.get_swap_count().cmp(&a.get_swap_count()));
+
         // Determine visible range of pools based on scroll position
         let pool_count = self.pools.len();
         let max_visible = list_area.height as usize;
@@ -217,7 +220,7 @@ impl Widget for &TerminalUI {
         };
 
         // Create a visible slice of pools
-        let visible_pools = &self.pools[start_idx..min(start_idx + max_visible, pool_count)];
+        let visible_pools = &sorted_pools[start_idx..min(start_idx + max_visible, pool_count)];
 
         // Create table headers
         let headers = Row::new(vec![
