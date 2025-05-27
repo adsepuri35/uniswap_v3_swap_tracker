@@ -294,7 +294,7 @@ impl Widget for &TerminalUI {
             vec![
                 Constraint::Length(6),  // Index
                 Constraint::Length(20), // Pool Name
-                Constraint::Length(13q),  // Protocol
+                Constraint::Length(13),  // Protocol
                 Constraint::Length(10), // Fee
                 Constraint::Length(10), // Swaps
                 Constraint::Length(20), // Price
