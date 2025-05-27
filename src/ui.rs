@@ -213,7 +213,7 @@ impl Widget for &TerminalUI {
             ));
 
         let pools_area = panes[0];
-        let prices_area = panes[1];
+        let right_area = panes[1];
 
         // Render Pools block
         let mut sorted_pools = self.pools.clone();
@@ -355,11 +355,46 @@ impl Widget for &TerminalUI {
 
         table.render(pools_area, buf);
 
-        // Render Prices block
-        let prices_block = Block::default()
+        // Render right block
+        let right_block = Block::default()
             .borders(ratatui::widgets::Borders::ALL)
-            .title(" Prices ");
+            .title(" Track Swaps ");
 
-        prices_block.render(prices_area, buf);
+        // Render swaps for the pool at index 1
+        if self.pools.len() > 1 {
+            let pool = &self.pools[1]; // Get the pool at index 1
+            let swap_store = pool.get_swap_store(); // Retrieve the swap events
+
+            let headers = Row::new(vec![
+                Cell::from("Timestamp"),
+                Cell::from("Amount0"),
+                Cell::from("Amount1"),
+            ])
+            .style(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD));
+
+            let rows: Vec<Row> = swap_store.iter().map(|(swap, timestamp)| {
+                Row::new(vec![
+                    Cell::from(format!("{}", timestamp)), // Timestamp
+                    Cell::from(format!("{}", swap.amount0)), // Amount0
+                    Cell::from(format!("{}", swap.amount1)), // Amount1
+                ])
+            }).collect();
+
+            let swaps_table = Table::new(
+                rows,
+                vec![
+                    Constraint::Length(20),
+                    Constraint::Length(20),
+                    Constraint::Length(20),
+                ],
+            )
+            .header(headers)
+            .block(right_block);
+
+            swaps_table.render(right_area, buf);
+        } else {
+            // If no pool exists at index 1, render the right block as empty
+            right_block.render(right_area, buf);
+        }
     }
 }

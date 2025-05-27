@@ -1,6 +1,7 @@
 use alloy::core::primitives::{Address};
 
 use crate::tokenInfo::TokenInfo;
+use amms::amms::uniswap_v3::{IUniswapV3PoolEvents::Swap};
 
 
 #[derive(Debug, Clone)]
@@ -19,7 +20,7 @@ pub struct PoolInfo {
     tick_range: (i32, i32),
     current_apr: f64,
     volume: f64,
-
+    swap_store: Vec<(Swap, u64)>
     // stats to add: last swap (time), 
 }
 
@@ -38,6 +39,7 @@ impl PoolInfo {
         tick_range: (i32, i32),
         current_apr: f64,
         volume: f64,
+        swap_store: Vec<(Swap, u64)>,
     ) -> Self {
 
         // generate pool name
@@ -65,7 +67,8 @@ impl PoolInfo {
             liquidity,
             tick_range,
             current_apr,
-            volume
+            volume,
+            swap_store
         }
     }
 
@@ -142,5 +145,13 @@ impl PoolInfo {
 
     pub fn add_volume(&mut self, this_swap_volume: f64) {
         self.volume += this_swap_volume
+    }
+
+    pub fn add_swap_store(&mut self, new_swap: Swap, timestamp: u64) {
+        self.swap_store.push((new_swap, timestamp));
+    }
+
+    pub fn get_swap_store(&self) -> &Vec<(Swap, u64)> {
+        &self.swap_store
     }
 }
