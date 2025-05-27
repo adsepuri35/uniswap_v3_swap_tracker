@@ -1,4 +1,4 @@
-use std::ops::Add;
+use std::ops::{Add, DerefMut};
 
 use alloy::core::primitives::{Address, U160};
 
@@ -15,13 +15,11 @@ pub struct PoolInfo {
     token1_info: TokenInfo,
     swaps_tracked: usize,
     fee: u32,
-
-    // price stats
     current_price: f64,
-    sqrt_price_X96: U160,
+    liquidity: u128,
+    tick_range: (i32, i32),
 
     // // needed
-    // tick_spacing: i32,
     // last_price: Option<f64>,     // derived from sqrtPriceX96
 }
 
@@ -35,9 +33,9 @@ impl PoolInfo {
         swaps_tracked: usize,
         fee: u32,    
         current_price: f64,
-        sqrt_price_X96: U160,
+        liquidity: u128,
+        tick_range: (i32, i32),
     ) -> Self {
-        let fee_percent = fee as f64 / 10000.0;
 
         // generate pool name
         let token0_symbol = token0_info.get_symbol();
@@ -45,9 +43,9 @@ impl PoolInfo {
         let pool_name = if token0_symbol.is_empty() || token1_symbol.is_empty() {
             format!("Pool-{:?}", pool_address)
         } else if token0_symbol < token1_symbol {
-            format!("{}/{} ({}%)", token0_symbol, token1_symbol, fee_percent)
+            format!("{}/{}", token0_symbol, token1_symbol)
         } else {
-            format!("{}/{} ({}%)", token1_symbol, token0_symbol, fee_percent)
+            format!("{}/{}", token1_symbol, token0_symbol)
         };
 
         PoolInfo {
@@ -60,7 +58,8 @@ impl PoolInfo {
             swaps_tracked,
             fee,
             current_price,
-            sqrt_price_X96,
+            liquidity,
+            tick_range,
         }
     }
 
@@ -92,11 +91,19 @@ impl PoolInfo {
         self.token1_info.get_decimals()
     }
 
-    pub fn get_sqrt_price_X96(&self) -> U160 {
-        self.sqrt_price_X96
+    pub fn get_liquidity(&self) -> u128 {
+        self.liquidity
     }
 
-    pub fn update_sqrt_price_X96(&mut self, new_sqrt_price: U160) {
-        self.sqrt_price_X96 = new_sqrt_price;
+    pub fn update_liquidity(&mut self, new_liquidity: u128) {
+        self.liquidity = new_liquidity;
+    }
+
+    pub fn get_tick_range(&self) -> (i32, i32) {
+        self.tick_range
+    }
+
+    pub fn get_fee_percent(&self) -> f64 {
+        self.fee as f64 / 10000.0
     }
 }

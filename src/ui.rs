@@ -2,11 +2,11 @@ use std::io;
 use crossterm::{event::{self, Event, KeyCode, KeyEvent, KeyEventKind}, terminal};
 use ratatui::{
     buffer::Buffer,
-    layout::Rect,
+    layout::{Rect, Constraint},
     style::Stylize,
     symbols::border,
     text::{Line, Text},
-    widgets::{Block, Paragraph, Widget},
+    widgets::{Block, Paragraph, Widget, Table, Row, Cell},
     DefaultTerminal, Frame,
 };
 use anyhow::Result;
@@ -160,9 +160,9 @@ impl TerminalUI {
     }
 
 }
+
 impl Widget for &TerminalUI {
     fn render(self, area: Rect, buf: &mut Buffer) {
-
         let instructions = Line::from(vec![
             " Up ".into(),
             "<↑>".blue().bold(),
@@ -184,63 +184,58 @@ impl Widget for &TerminalUI {
             .title_bottom(instructions.centered())
             .border_type(ratatui::widgets::BorderType::Rounded);
 
-        
         // Render the block in the area
         block.clone().render(area, buf);
-        
+
         // Calculate inner area for content
         let inner_area = block.inner(area);
-        
-        // Calculate how many pools we can display at once
-        let visible_height = inner_area.height as usize;
-        
+
         // Create header with total stats
         let header = format!("Total Pools: {} | Total Swaps: {}", self.pools.len(), self.total_swaps);
         let header_text = Text::from(header);
 
-        
-        
         // Render header
         Paragraph::new(header_text)
             .render(Rect::new(inner_area.x, inner_area.y, inner_area.width, 1), buf);
-        
+
         // Calculate available space for pool list
         let list_area = Rect::new(
             inner_area.x,
             inner_area.y + 2, // +2 to leave space after header
             inner_area.width,
-            inner_area.height.saturating_sub(2)
+            inner_area.height.saturating_sub(2),
         );
-        
+
         // Determine visible range of pools based on scroll position
         let pool_count = self.pools.len();
         let max_visible = list_area.height as usize;
-        
-        // Calculate the start index based on scroll offset
         let start_idx: usize = if pool_count <= max_visible {
             0 // Show from beginning if all fit
         } else {
-            // Otherwise, use scroll offset to determine starting point
-            // Make sure we can always see a full page
             let max_start = pool_count.saturating_sub(max_visible);
             self.scroll_offset.min(max_start)
         };
-        
+
         // Create a visible slice of pools
         let visible_pools = &self.pools[start_idx..min(start_idx + max_visible, pool_count)];
-        
-        // Render each visible pool
-        for (i, pool) in visible_pools.iter().enumerate() {
-            let y_pos = list_area.y + i as u16;
-            
-            // Skip if we're past the bottom of the visible area
-            if y_pos >= list_area.y + list_area.height {
-                break;
-            }
 
+        // Create table headers
+        let headers = Row::new(vec![
+            Cell::from("Index"),
+            Cell::from("Pool Name"),
+            Cell::from("Fee"),
+            Cell::from("Swaps"),
+            Cell::from("Price"),
+            Cell::from("Liquidity"),
+            Cell::from("Lower Tick"),
+            Cell::from("Upper Tick"),
+        ])
+        .style(ratatui::style::Style::default().add_modifier(ratatui::style::Modifier::BOLD));
+
+        // Create rows for each pool
+        let rows: Vec<Row> = visible_pools.iter().enumerate().map(|(i, pool)| {
             let price_display = {
                 let price = pool.get_current_price();
-
                 if price == 0.0 {
                     "Price unknown".to_string()
                 } else if price >= 1_000_000.0 {
@@ -257,33 +252,62 @@ impl Widget for &TerminalUI {
                     format!("${:.10}", price)
                 }
             };
-            
-            let line = format!(
-                "{:3}. {:30} | {:5} swaps | price: {:20}", 
-                start_idx + i + 1,
-                pool.get_pool_name(),
-                pool.get_swap_count(),
-                price_display,
-            );
-            
-            // Render this pool line
-            Paragraph::new(Text::from(line))
-                .render(Rect::new(list_area.x, y_pos, list_area.width, 1), buf);
-        }
-        
-        // Render scroll indicators if needed
-        if pool_count > max_visible {
-            let scroll_info = format!("[{}/{}]", start_idx + 1, pool_count);
-            Paragraph::new(Text::from(scroll_info.clone()))
-                .render(
-                    Rect::new(
-                        inner_area.x + inner_area.width - scroll_info.len() as u16 - 2,
-                        inner_area.y + inner_area.height - 1,
-                        scroll_info.len() as u16,
-                        1
-                    ),
-                    buf
-                );
-        }
+
+            let liquidity_display = {
+                let liquidity = pool.get_liquidity();
+                if liquidity >= 1_000_000_000_000_000_000 {
+                    format!("{:.2}Q", liquidity as f64 / 1_000_000_000_000_000_000.0)
+                } else if liquidity >= 1_000_000_000_000_000 {
+                    format!("{:.2}Qd", liquidity as f64 / 1_000_000_000_000_000.0)
+                } else if liquidity >= 1_000_000_000_000 {
+                    format!("{:.2}T", liquidity as f64 / 1_000_000_000_000.0)
+                } else if liquidity >= 1_000_000_000 {
+                    format!("{:.2}B", liquidity as f64 / 1_000_000_000.0)
+                } else if liquidity >= 1_000_000 {
+                    format!("{:.2}M", liquidity as f64 / 1_000_000.0)
+                } else if liquidity >= 1_000 {
+                    format!("{:.2}K", liquidity as f64 / 1_000.0)
+                } else {
+                    format!("{}", liquidity)
+                }
+            };
+
+            let (lower_tick, upper_tick) = pool.get_tick_range();
+
+            Row::new(vec![
+                Cell::from(format!("{}", start_idx + i + 1)), // Index
+                Cell::from(pool.get_pool_name().to_string()), // Pool Name
+                Cell::from(format!("{:.2}%", pool.get_fee_percent())), // Fee
+                Cell::from(format!("{}", pool.get_swap_count())), // Swaps
+                Cell::from(price_display), // Price
+                Cell::from(liquidity_display), // Liquidity
+                Cell::from(format!("{}", lower_tick)), // Lower Tick
+                Cell::from(format!("{}", upper_tick)), // Upper Tick
+            ])
+        }).collect();
+
+        // Create the table
+        let table = Table::new(
+            rows, // Rows for the table
+            vec![
+                Constraint::Length(6),  // Index
+                Constraint::Length(30), // Pool Name
+                Constraint::Length(10), // Fee
+                Constraint::Length(10), // Swaps
+                Constraint::Length(15), // Price
+                Constraint::Length(15), // Liquidity
+                Constraint::Length(12), // Lower Tick
+                Constraint::Length(12), // Upper Tick
+            ],
+        )
+        .header(headers) // Add headers to the table
+        .block(
+            Block::default()
+                .borders(ratatui::widgets::Borders::ALL) // Add borders around the table
+                .title("Pools") // Add a title to the table
+        );
+
+        // Render the table
+        table.render(list_area, buf);
     }
 }

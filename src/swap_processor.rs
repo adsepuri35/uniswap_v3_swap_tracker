@@ -32,13 +32,13 @@ pub async fn process_swap_event<P: Provider + Clone> (
 
     let contract = IUniswapV3PoolInstance::new(pool_address, provider.clone());
 
+
     let swap_event= log.log_decode::<Swap>()?;
 
     let amount0 = i128::try_from(swap_event.data().amount0).unwrap_or_default();
     let amount1 = i128::try_from(swap_event.data().amount1).unwrap_or_default();
     let sqrt_price_x96: U160 = swap_event.data().sqrtPriceX96.into();
     let liquidity = swap_event.data().liquidity;
-
     let tick = match swap_event.data().tick.try_into() {
         Ok(t) => t,
         Err(_) => {
@@ -47,8 +47,6 @@ pub async fn process_swap_event<P: Provider + Clone> (
             0 // Default tick, which will give a price of 1.0001^0 = 1.0
         }
     };
-
-
 
     // acquire token addresses + symbols
     let token0_address = contract.token0().call().await?;
@@ -103,7 +101,10 @@ async fn process_new_pool<P: Provider + Clone>(
     let token1_decimals = token_info_map.get(&token1_address).unwrap().get_decimals();
     let current_price = calculate_price_from_sqrt_price_x96(sqrt_price_x96, token0_decimals, token1_decimals);
 
-    let new_pool = PoolInfo::new(pool_address, token0_address, token1_address, token_info_map.get(&token0_address).unwrap().clone(), token_info_map.get(&token1_address).unwrap().clone(), 1, fee, current_price, sqrt_price_x96);
+    let tick_spacing = contract.tickSpacing().call().await?.as_i32();
+    let tick_range = calculate_tick_range(tick, tick_spacing);
+
+    let new_pool = PoolInfo::new(pool_address, token0_address, token1_address, token_info_map.get(&token0_address).unwrap().clone(), token_info_map.get(&token1_address).unwrap().clone(), 1, fee, current_price, liquidity, tick_range);
     pool_storage.push(new_pool);
 
     Ok(())
@@ -130,7 +131,7 @@ fn update_existing_pool(
         let token1_decimals = pool.get_token1_decimals();
         let new_price = calculate_price_from_sqrt_price_x96(sqrt_price_x96, token0_decimals, token1_decimals);
         pool.update_current_price(new_price);
-        pool.update_sqrt_price_X96(sqrt_price_x96);
+        pool.update_liquidity(liquidity);
 
     } else {
         println!("Error: Pool found in HashMap but no index available");
@@ -198,4 +199,10 @@ pub fn calculate_price_from_sqrt_price_x96(
     }
 
     adjusted_price
+}
+
+pub fn calculate_tick_range(tick: i32, tick_spacing: i32) -> (i32, i32) {
+    let lower_tick = tick - (tick % tick_spacing);
+    let upper_tick = lower_tick + tick_spacing;
+    (lower_tick, upper_tick)
 }
