@@ -63,7 +63,7 @@ impl TerminalUI {
                     Ok(pools) => {
                         // Update the UI with new pool data
                         self.pools = pools;
-                        self.total_swaps = self.pools.iter().map(|p| *p.get_swap_count()).sum();
+                        self.total_swaps = self.pools.iter().map(|p| p.get_swap_count()).sum();
                     }
                     Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
                         // No data available, that's fine
@@ -176,7 +176,7 @@ impl Widget for &TerminalUI {
             "<Q> ".blue().bold(),
         ]);
 
-        let title = Line::from(" Uniswap Swap Tracker ".bold());
+        let title = Line::from(" Uniswap Swap Tracker ".magenta().bold());
 
         // Create a block for the UI
         let block = Block::bordered()
@@ -191,7 +191,7 @@ impl Widget for &TerminalUI {
         let inner_area = block.inner(area);
 
         // Create header with total stats
-        let header = format!("Total Pools: {} | Total Swaps: {}", self.pools.len(), self.total_swaps);
+        let header = format!(" Pools Tracked: {} | Swaps Tracked: {}", self.pools.len(), self.total_swaps);
         let header_text = Text::from(header);
 
         // Render header
@@ -230,6 +230,8 @@ impl Widget for &TerminalUI {
             Cell::from("Liquidity"),
             Cell::from("Lower Tick"),
             Cell::from("Upper Tick"),
+            Cell::from("APR"),
+            Cell::from("Volume (ETH)"),
         ])
         .style(ratatui::style::Style::default().add_modifier(ratatui::style::Modifier::BOLD));
 
@@ -275,6 +277,31 @@ impl Widget for &TerminalUI {
 
             let (lower_tick, upper_tick) = pool.get_tick_range();
 
+            fn format_volume(volume: f64) -> String {
+                if volume >= 1_000_000_000_000_000_000.0 {
+                    format!("{:.2}Qd", volume / 1_000_000_000_000_000_000.0)
+                } else if volume >= 1_000_000_000_000_000.0 {
+                    format!("{:.2}Q", volume / 1_000_000_000_000_000.0)
+                } else if volume >= 1_000_000_000_000.0 {
+                    format!("{:.2}T", volume / 1_000_000_000_000.0)
+                } else if volume >= 1_000_000_000.0 {
+                    format!("{:.2}B", volume / 1_000_000_000.0)
+                } else if volume >= 1_000_000.0 {
+                    format!("{:.2}M", volume / 1_000_000.0)
+                } else if volume >= 1_000.0 {
+                    format!("{:.2}K", volume / 1_000.0)
+                } else if volume > 0.0 {
+                    // For small non-zero values, display without trailing decimals
+                    if volume.fract() == 0.0 {
+                        format!("{:.0}", volume) // No decimal places for whole numbers
+                    } else {
+                        format!("{:.2}", volume) // Two decimal places for fractional values
+                    }
+                } else {
+                    "0".to_string() // Display "0" for zero values
+                }
+            }
+
             Row::new(vec![
                 Cell::from(format!("{}", start_idx + i + 1)), // Index
                 Cell::from(pool.get_pool_name().to_string()), // Pool Name
@@ -285,6 +312,8 @@ impl Widget for &TerminalUI {
                 Cell::from(liquidity_display), // Liquidity
                 Cell::from(format!("{}", lower_tick)), // Lower Tick
                 Cell::from(format!("{}", upper_tick)), // Upper Tick
+                Cell::from(format!("{:.2}%", pool.get_current_apr())), // APR
+                Cell::from(format_volume(pool.get_volume())), // Volume
             ])
         }).collect();
 
@@ -301,11 +330,13 @@ impl Widget for &TerminalUI {
                 Constraint::Length(20), // Liquidity
                 Constraint::Length(15), // Lower Tick
                 Constraint::Length(15), // Upper Tick
+                Constraint::Length(15), // APR
+                Constraint::Length(15), // Volume
             ],
         )
         .header(headers) // Add headers to the table
         .block(
-            Block::default()
+            Block::default() 
                 .borders(ratatui::widgets::Borders::ALL) // Add borders around the table
                 .title("Pools") // Add a title to the table
         );

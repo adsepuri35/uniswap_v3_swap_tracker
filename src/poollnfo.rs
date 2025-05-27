@@ -1,6 +1,7 @@
 use std::ops::{Add, DerefMut};
 
 use alloy::core::primitives::{Address, U160};
+use amms::amms::GetTokenDecimalsBatchRequest::new;
 
 use crate::tokenInfo::TokenInfo;
 
@@ -18,9 +19,8 @@ pub struct PoolInfo {
     current_price: f64,
     liquidity: u128,
     tick_range: (i32, i32),
-
-    // // needed
-    // last_price: Option<f64>,     // derived from sqrtPriceX96
+    current_apr: f64,
+    volume: f64,
 }
 
 impl PoolInfo {
@@ -35,6 +35,8 @@ impl PoolInfo {
         current_price: f64,
         liquidity: u128,
         tick_range: (i32, i32),
+        current_apr: f64,
+        volume: f64,
     ) -> Self {
 
         // generate pool name
@@ -60,6 +62,8 @@ impl PoolInfo {
             current_price,
             liquidity,
             tick_range,
+            current_apr,
+            volume
         }
     }
 
@@ -67,8 +71,8 @@ impl PoolInfo {
         self.swaps_tracked += 1;
     }
 
-    pub fn get_swap_count(&self) -> &usize {
-        &self.swaps_tracked
+    pub fn get_swap_count(&self) -> usize {
+        self.swaps_tracked
     }
 
     pub fn get_pool_name(&self) -> &str {
@@ -103,7 +107,27 @@ impl PoolInfo {
         self.tick_range
     }
 
+    pub fn get_fee(&self) -> u32 {
+        self.fee
+    }
+
     pub fn get_fee_percent(&self) -> f64 {
         self.fee as f64 / 10000.0
+    }
+
+    pub fn get_current_apr(&self) -> f64 {
+        self.current_apr
+    }
+
+    pub fn update_current_apr(&mut self, new_apr: f64) {
+        self.current_apr = new_apr
+    }
+
+    pub fn get_volume(&self) -> f64 {
+        self.volume
+    }
+
+    pub fn add_volume(&mut self, this_swap_volume: f64) {
+        self.volume += this_swap_volume
     }
 }

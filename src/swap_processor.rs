@@ -104,7 +104,12 @@ async fn process_new_pool<P: Provider + Clone>(
     let tick_spacing = contract.tickSpacing().call().await?.as_i32();
     let tick_range = calculate_tick_range(tick, tick_spacing);
 
-    let new_pool = PoolInfo::new(pool_address, token0_address, token1_address, token_info_map.get(&token0_address).unwrap().clone(), token_info_map.get(&token1_address).unwrap().clone(), 1, fee, current_price, liquidity, tick_range);
+    let apr = calculate_apr(fee, 1, liquidity);
+    let amount0_scaled = amount0.abs() as f64 / 10f64.powi(token0_decimals as i32);
+    let amount1_scaled = amount1.abs() as f64 / 10f64.powi(token1_decimals as i32);
+    let volume = amount0_scaled + amount1_scaled;
+
+    let new_pool = PoolInfo::new(pool_address, token0_address, token1_address, token_info_map.get(&token0_address).unwrap().clone(), token_info_map.get(&token1_address).unwrap().clone(), 1, fee, current_price, liquidity, tick_range, apr, volume);
     pool_storage.push(new_pool);
 
     Ok(())
@@ -130,8 +135,16 @@ fn update_existing_pool(
         let token0_decimals = pool.get_token0_decimals();
         let token1_decimals = pool.get_token1_decimals();
         let new_price = calculate_price_from_sqrt_price_x96(sqrt_price_x96, token0_decimals, token1_decimals);
+        let new_apr = calculate_apr(pool.get_fee(), pool.get_swap_count(), pool.get_liquidity());
         pool.update_current_price(new_price);
         pool.update_liquidity(liquidity);
+        pool.update_current_apr(new_apr);
+
+        // volume calc
+        let amount0_scaled = amount0.abs() as f64 / 10f64.powi(token0_decimals as i32);
+        let amount1_scaled = amount1.abs() as f64 / 10f64.powi(token1_decimals as i32);
+        let volume = amount0_scaled + amount1_scaled;
+        pool.add_volume(volume);
 
     } else {
         println!("Error: Pool found in HashMap but no index available");
@@ -206,3 +219,20 @@ pub fn calculate_tick_range(tick: i32, tick_spacing: i32) -> (i32, i32) {
     let upper_tick = lower_tick + tick_spacing;
     (lower_tick, upper_tick)
 }
+
+pub fn calculate_daily_fees(fee: u32, swaps_tracked: usize) -> f64 {
+    let fee_tier = fee as f64 / 1_000_000.0;
+    let total_fees = swaps_tracked as f64 * fee_tier; 
+    total_fees
+}
+
+pub fn calculate_apr(fee: u32, swaps_tracked: usize, liquidity: u128) -> f64 {
+    let daily_fees = calculate_daily_fees(fee, swaps_tracked);
+    if liquidity == 0 {
+        return 0.0;
+    }
+    let scaled_liquidity = liquidity as f64 / 1e18;
+    let apr = (daily_fees / scaled_liquidity as f64) * 365.0 * 100.0;
+    apr
+}
+
