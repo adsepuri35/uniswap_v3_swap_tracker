@@ -1,7 +1,4 @@
-use std::{ops::{Add, DerefMut}, thread::current};
-
-use alloy::core::primitives::{Address, U160};
-use amms::amms::GetTokenDecimalsBatchRequest::new;
+use alloy::core::primitives::{Address};
 
 use crate::tokenInfo::TokenInfo;
 
@@ -22,6 +19,8 @@ pub struct PoolInfo {
     tick_range: (i32, i32),
     current_apr: f64,
     volume: f64,
+
+    // stats to add: last swap (time), 
 }
 
 impl PoolInfo {

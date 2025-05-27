@@ -1,6 +1,7 @@
 
 use alloy::{core::primitives::{Address, U160, U256}, providers::{Provider}};
 use anyhow::Result;
+use serde_json::error;
 use std::{collections::HashMap};
 use amms::amms::uniswap_v3::{IUniswapV3Pool::IUniswapV3PoolInstance, IUniswapV3PoolEvents::Swap};
 // use reqwest::Client;
@@ -32,8 +33,18 @@ pub async fn process_swap_event<P: Provider + Clone> (
 
     let contract = IUniswapV3PoolInstance::new(pool_address, provider.clone());
 
+    let swap_event = match log.log_decode::<Swap>() {
+        Ok(event) => {
+            event
+        },
+        Err(error) => {
 
-    let swap_event= log.log_decode::<Swap>()?;
+            panic!("{}", error);
+        }
+    };
+
+    // let swap_event= log.log_decode::<Swap>()?; // possible error
+
 
     let amount0 = i128::try_from(swap_event.data().amount0).unwrap_or_default();
     let amount1 = i128::try_from(swap_event.data().amount1).unwrap_or_default();
@@ -127,8 +138,7 @@ fn update_existing_pool(
 ) -> Result<()> {
     if let Some(&index) = pool_address_to_index.get(&pool_address) {
         let pool = &mut pool_storage[index as usize];
-        
-        // Update the pool with new info
+
         pool.increment_swap_count();
 
         // update price

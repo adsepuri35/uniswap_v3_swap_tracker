@@ -198,31 +198,38 @@ impl Widget for &TerminalUI {
         Paragraph::new(header_text)
             .render(Rect::new(inner_area.x, inner_area.y, inner_area.width, 1), buf);
 
-        // Calculate available space for pool list
-        let list_area = Rect::new(
-            inner_area.x,
-            inner_area.y + 2, // +2 to leave space after header
-            inner_area.width,
-            inner_area.height.saturating_sub(2),
-        );
+        // Split the inner area into two panes: left (Pools) and right (Prices)
+        let panes = ratatui::layout::Layout::default()
+            .direction(ratatui::layout::Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(70), // Pools block takes 70% of the width
+                Constraint::Percentage(30), // Prices block takes 30% of the width
+            ])
+            .split(Rect::new(
+                inner_area.x,
+                inner_area.y + 2, // +2 to leave space after header
+                inner_area.width,
+                inner_area.height.saturating_sub(2),
+            ));
 
+        let pools_area = panes[0];
+        let prices_area = panes[1];
+
+        // Render Pools block
         let mut sorted_pools = self.pools.clone();
         sorted_pools.sort_by(|a, b| b.get_swap_count().cmp(&a.get_swap_count()));
 
-        // Determine visible range of pools based on scroll position
         let pool_count = self.pools.len();
-        let max_visible = list_area.height as usize;
+        let max_visible = pools_area.height as usize;
         let start_idx: usize = if pool_count <= max_visible {
-            0 // Show from beginning if all fit
+            0
         } else {
             let max_start = pool_count.saturating_sub(max_visible);
             self.scroll_offset.min(max_start)
         };
 
-        // Create a visible slice of pools
         let visible_pools = &sorted_pools[start_idx..min(start_idx + max_visible, pool_count)];
 
-        // Create table headers
         let headers = Row::new(vec![
             Cell::from("ID"),
             Cell::from("Pool Name"),
@@ -238,7 +245,6 @@ impl Widget for &TerminalUI {
         ])
         .style(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD));
 
-        // Create rows for each pool
         let rows: Vec<Row> = visible_pools.iter().enumerate().map(|(i, pool)| {
             let price_display = {
                 let price = pool.get_current_price();
@@ -324,31 +330,36 @@ impl Widget for &TerminalUI {
             ])
         }).collect();
 
-        // Create the table
         let table = Table::new(
-            rows, // Rows for the table
+            rows,
             vec![
-                Constraint::Length(6),  // Index
-                Constraint::Length(20), // Pool Name
-                Constraint::Length(13),  // Protocol
-                Constraint::Length(10), // Fee
-                Constraint::Length(10), // Swaps
-                Constraint::Length(20), // Price
-                Constraint::Length(20), // Liquidity
-                Constraint::Length(15), // Lower Tick
-                Constraint::Length(15), // Upper Tick
-                Constraint::Length(15), // APR
-                Constraint::Length(15), // Volume
+                Constraint::Length(6),
+                Constraint::Length(20),
+                Constraint::Length(13),
+                Constraint::Length(10),
+                Constraint::Length(10),
+                Constraint::Length(20),
+                Constraint::Length(20),
+                Constraint::Length(15),
+                Constraint::Length(15),
+                Constraint::Length(15),
+                Constraint::Length(15),
             ],
         )
-        .header(headers) // Add headers to the table
+        .header(headers)
         .block(
-            Block::default() 
-                .borders(ratatui::widgets::Borders::ALL) // Add borders around the table
-                .title("Pools") // Add a title to the table
+            Block::default()
+                .borders(ratatui::widgets::Borders::ALL)
+                .title(" Pools "),
         );
 
-        // Render the table
-        table.render(list_area, buf);
+        table.render(pools_area, buf);
+
+        // Render Prices block
+        let prices_block = Block::default()
+            .borders(ratatui::widgets::Borders::ALL)
+            .title(" Prices ");
+
+        prices_block.render(prices_area, buf);
     }
 }
