@@ -20,7 +20,7 @@ pub struct PoolInfo {
     tick_range: (i32, i32),
     current_apr: f64,
     volume: f64,
-    swap_store: Vec<(Swap, String)>
+    swap_store: Vec<(f64, f64, String)> // amount0, amount1, time
     // stats to add: last swap (time), 
 }
 
@@ -39,7 +39,7 @@ impl PoolInfo {
         tick_range: (i32, i32),
         current_apr: f64,
         volume: f64,
-        swap_store: Vec<(Swap, String)>,
+        swap_store: Vec<(f64, f64, String)>,
     ) -> Self {
 
         // generate pool name
@@ -147,11 +147,19 @@ impl PoolInfo {
         self.volume += this_swap_volume
     }
 
-    pub fn add_swap_store(&mut self, new_swap: Swap, timestamp: String) {
-        self.swap_store.push((new_swap, timestamp));
+    pub fn add_swap_store(&mut self, amount0: f64, amount1: f64, timestamp: String) {
+        self.swap_store.push((amount0, amount1, timestamp));
     }
 
-    pub fn get_swap_store(&self) -> &Vec<(Swap, String)> {
+    pub fn get_swap_store(&self) -> &Vec<(f64, f64, String)> {
         &self.swap_store
+    }
+
+    pub fn get_token0_symbol(&self) -> String {
+        self.token0_info.symbol.clone()
+    }
+
+    pub fn get_token1_symbol(&self) -> String {
+        self.token1_info.symbol.clone()
     }
 }

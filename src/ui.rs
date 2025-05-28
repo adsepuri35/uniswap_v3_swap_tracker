@@ -283,6 +283,9 @@ impl Widget for &TerminalUI {
         .style(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD));
 
         let rows: Vec<Row> = visible_pools.iter().enumerate().map(|(i, pool)| {
+
+            let is_selected = start_idx + i == self.selected_pool_index;
+
             let price_display = {
                 let price = pool.get_current_price();
                 let price_text = if price == 0.0 {
@@ -302,7 +305,26 @@ impl Widget for &TerminalUI {
                 };
 
                 let color = pool.get_price_change_color();
-                Cell::from(price_text).style(ratatui::style::Style::default().fg(color))    
+                
+                if is_selected {
+                    if (color == ratatui::style::Color::White) {
+                        Cell::from(price_text).style(
+                        ratatui::style::Style::default()
+                            .fg(ratatui::style::Color::Yellow) // Use yellow for selected rows
+                            .add_modifier(ratatui::style::Modifier::BOLD),
+                        )
+                    } else {
+                        Cell::from(price_text).style(
+                            ratatui::style::Style::default()
+                                .fg(color)
+                                .add_modifier(ratatui::style::Modifier::BOLD),
+                        )
+                    }
+                    
+                } else {
+                    // Use the price change color for non-selected rows
+                    Cell::from(price_text).style(ratatui::style::Style::default().fg(color))
+                }
             };
 
             let liquidity_display = {
@@ -351,7 +373,7 @@ impl Widget for &TerminalUI {
                 }
             }
 
-            let is_selected = start_idx + i == self.selected_pool_index;
+            
             let style = if is_selected {
                 ratatui::style::Style::default().fg(ratatui::style::Color::Yellow).add_modifier(ratatui::style::Modifier::BOLD)
             } else {
@@ -398,11 +420,6 @@ impl Widget for &TerminalUI {
 
         table.render(pools_area, buf);
 
-        // Render right block
-        let right_block = Block::default()
-            .borders(ratatui::widgets::Borders::ALL)
-            .title(" Track Swaps ");
-
         // Render swaps for the selected pool
         if let Some(selected_pool) = sorted_pools.get(self.selected_pool_index) {
             // Use the pool address to find the correct index in the original list
@@ -412,8 +429,8 @@ impl Widget for &TerminalUI {
 
                 let headers = Row::new(vec![
                     Cell::from("Timestamp"),
-                    Cell::from("Amount0"),
-                    Cell::from("Amount1"),
+                    Cell::from(format!("Amount of {}", pool.get_token0_symbol())),
+                    Cell::from(format!("Amount of {}", pool.get_token1_symbol()))
                 ])
                 .style(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD));
 
@@ -425,11 +442,11 @@ impl Widget for &TerminalUI {
                         Cell::from(""),
                     ])]
                 } else {
-                    swap_store.iter().rev().map(|(swap, timestamp)| {
+                    swap_store.iter().rev().map(|(amount0, amount1, timestamp)| {
                         Row::new(vec![
                             Cell::from(format!("{}", timestamp)), // Timestamp
-                            Cell::from(format!("{}", swap.amount0)), // Amount0
-                            Cell::from(format!("{}", swap.amount1)), // Amount1
+                            Cell::from(format!("{}", amount0)), // Amount0
+                            Cell::from(format!("{}", amount1)), // Amount1
                         ])
                     }).collect()
                 };

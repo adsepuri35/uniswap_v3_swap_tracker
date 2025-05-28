@@ -126,7 +126,10 @@ async fn process_new_pool<P: Provider + Clone>(
     let amount1_scaled = amount1.abs() as f64 / 10f64.powi(token1_decimals as i32);
     let volume = amount0_scaled + amount1_scaled;
 
-    let swap_store = vec![(swap, timestamp)];
+
+    let readable_amount0 = make_amount_readable(amount0, token0_decimals);
+    let readable_amount1 = make_amount_readable(amount1, token1_decimals);
+    let swap_store = vec![(readable_amount0, readable_amount1, timestamp)];
 
     let new_pool = PoolInfo::new(pool_address, token0_address, token1_address, token_info_map.get(&token0_address).unwrap().clone(), token_info_map.get(&token1_address).unwrap().clone(), 1, fee, current_price, 0.0, liquidity, tick_range, apr, volume, swap_store);
     pool_storage.push(new_pool);
@@ -166,7 +169,10 @@ fn update_existing_pool(
         let volume = amount0_scaled + amount1_scaled;
         pool.add_volume(volume);
 
-        pool.add_swap_store(swap, timestamp);
+
+        let readable_amount0 = make_amount_readable(amount0, token0_decimals);
+        let readable_amount1 = make_amount_readable(amount1, token1_decimals);
+        pool.add_swap_store(readable_amount0, readable_amount1, timestamp);
 
     } else {
         println!("Error: Pool found in HashMap but no index available");
@@ -258,3 +264,8 @@ pub fn calculate_apr(fee: u32, swaps_tracked: usize, liquidity: u128) -> f64 {
     apr
 }
 
+
+pub fn make_amount_readable(amount: i128, decimals: u8) -> f64 {
+    let divisor = 10f64.powi(decimals as i32);
+    amount as f64 / divisor
+}
