@@ -1,4 +1,5 @@
 use std::io;
+use std::collections::HashMap;
 use crossterm::{event::{self, Event, KeyCode, KeyEvent, KeyEventKind}, terminal};
 use ratatui::{
     buffer::Buffer,
@@ -13,6 +14,7 @@ use anyhow::Result;
 use tokio::sync::mpsc::Receiver;
 use tokio::time::Duration;
 use std::cmp::min;
+use alloy::core::primitives::Address;
 
 //file imports
 use crate::poollnfo::PoolInfo;
@@ -25,6 +27,7 @@ pub struct TerminalUI {
     rx: Option<Receiver<Vec<PoolInfo>>>,
     scroll_offset: usize,
     selected_pool_index: usize,
+    pool_address_to_index: HashMap<Address, usize>,
 }
 
 impl Default for TerminalUI {
@@ -36,6 +39,7 @@ impl Default for TerminalUI {
             rx: None,
             scroll_offset: 0,
             selected_pool_index: 0,
+            pool_address_to_index: HashMap::new(),
         }
     }
 }
@@ -66,6 +70,11 @@ impl TerminalUI {
                         // Update the UI with new pool data
                         self.pools = pools;
                         self.total_swaps = self.pools.iter().map(|p| p.get_swap_count()).sum();
+
+                        self.pool_address_to_index.clear();
+                        for (index, pool) in self.pools.iter().enumerate() {
+                            self.pool_address_to_index.insert(pool.pool_address, index);
+                        }
                     }
                     Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
                         // No data available, that's fine
@@ -162,6 +171,7 @@ impl TerminalUI {
             rx: Some(rx),
             scroll_offset: 0,
             selected_pool_index: 0,
+            pool_address_to_index: HashMap::new(),
         }
     }
 
@@ -374,50 +384,53 @@ impl Widget for &TerminalUI {
             .title(" Track Swaps ");
 
         // Render swaps for the selected pool
-        if !self.pools.is_empty() {
-            let selected_pool = &self.pools[self.selected_pool_index]; // Get the selected pool
-            let swap_store = selected_pool.get_swap_store(); // Retrieve the swap events
+        if let Some(selected_pool) = sorted_pools.get(self.selected_pool_index) {
+            // Use the pool address to find the correct index in the original list
+            if let Some(&original_index) = self.pool_address_to_index.get(&selected_pool.pool_address) {
+                let pool = &self.pools[original_index]; // Get the correct pool from the original list
+                let swap_store = pool.get_swap_store(); // Retrieve the swap events
 
-            let headers = Row::new(vec![
-                Cell::from("Timestamp"),
-                Cell::from("Amount0"),
-                Cell::from("Amount1"),
-            ])
-            .style(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD));
+                let headers = Row::new(vec![
+                    Cell::from("Timestamp"),
+                    Cell::from("Amount0"),
+                    Cell::from("Amount1"),
+                ])
+                .style(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD));
 
-            // If there are no swaps, display an empty row
-            let rows: Vec<Row> = if swap_store.is_empty() {
-                vec![Row::new(vec![
-                    Cell::from("No swaps available"),
-                    Cell::from(""),
-                    Cell::from(""),
-                ])]
-            } else {
-                swap_store.iter().map(|(swap, timestamp)| {
-                    Row::new(vec![
-                        Cell::from(format!("{}", timestamp)), // Timestamp
-                        Cell::from(format!("{}", swap.amount0)), // Amount0
-                        Cell::from(format!("{}", swap.amount1)), // Amount1
-                    ])
-                }).collect()
-            };
+                // If there are no swaps, display an empty row
+                let rows: Vec<Row> = if swap_store.is_empty() {
+                    vec![Row::new(vec![
+                        Cell::from("No swaps available"),
+                        Cell::from(""),
+                        Cell::from(""),
+                    ])]
+                } else {
+                    swap_store.iter().map(|(swap, timestamp)| {
+                        Row::new(vec![
+                            Cell::from(format!("{}", timestamp)), // Timestamp
+                            Cell::from(format!("{}", swap.amount0)), // Amount0
+                            Cell::from(format!("{}", swap.amount1)), // Amount1
+                        ])
+                    }).collect()
+                };
 
-            let swaps_table = Table::new(
-                rows,
-                vec![
-                    Constraint::Length(20),
-                    Constraint::Length(20),
-                    Constraint::Length(20),
-                ],
-            )
-            .header(headers)
-            .block(
-                Block::default()
-                    .borders(ratatui::widgets::Borders::ALL)
-                    .title(format!(" Swaps for Pool: {} ", selected_pool.get_pool_name())),
-            );
+                let swaps_table = Table::new(
+                    rows,
+                    vec![
+                        Constraint::Length(20),
+                        Constraint::Length(20),
+                        Constraint::Length(20),
+                    ],
+                )
+                .header(headers)
+                .block(
+                    Block::default()
+                        .borders(ratatui::widgets::Borders::ALL)
+                        .title(format!(" Swaps for Pool: {} ", pool.get_pool_name())),
+                );
 
-            swaps_table.render(right_area, buf);
+                swaps_table.render(right_area, buf);
+            }
         } else {
             // If no pools are available, render an empty swaps table
             let headers = Row::new(vec![

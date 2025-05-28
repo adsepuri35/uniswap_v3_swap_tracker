@@ -6,7 +6,7 @@ use amms::amms::uniswap_v3::{IUniswapV3PoolEvents::Swap};
 
 #[derive(Debug, Clone)]
 pub struct PoolInfo {
-    pool_address: Address,
+    pub pool_address: Address,
     pool_name: String,
     token0: Address,
     token1: Address,
