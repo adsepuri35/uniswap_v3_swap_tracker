@@ -120,27 +120,48 @@ impl TerminalUI {
 
             // Add scroll controls
             KeyCode::Up | KeyCode::Char('k') => {
-                if self.scroll_offset > 0 {
-                    self.scroll_offset -= 1;
+                if self.selected_pool_index > 0 {
                     self.selected_pool_index -= 1;
+
+                    // Adjust scroll offset if the selected pool is above the visible range
+                    if self.selected_pool_index < self.scroll_offset {
+                        self.scroll_offset = self.selected_pool_index;
+                    }
                 }
             }
+
+            // Move selection down
             KeyCode::Down | KeyCode::Char('j') => {
-                // Only scroll if there are more pools to show
-                if self.scroll_offset < self.pools.len().saturating_sub(1) {
-                    self.scroll_offset += 1;
+                if self.selected_pool_index < self.pools.len().saturating_sub(1) {
                     self.selected_pool_index += 1;
+
+                    // Adjust scroll offset if the selected pool is below the visible range
+                    let max_visible = 10; // Number of rows visible at a time
+                    if self.selected_pool_index >= self.scroll_offset + max_visible {
+                        self.scroll_offset = self.selected_pool_index + 1 - max_visible;
+                    }
                 }
             }
+
+            // Scroll a page up
             KeyCode::PageUp => {
-                // Scroll a page up (10 lines at a time)
-                self.scroll_offset = self.scroll_offset.saturating_sub(10);
+                let max_visible = 10; // Number of rows visible at a time
+                if self.scroll_offset > 0 {
+                    self.scroll_offset = self.scroll_offset.saturating_sub(max_visible);
+                    self.selected_pool_index = self.scroll_offset;
+                }
             }
+
+            // Scroll a page down
             KeyCode::PageDown => {
-                // Scroll a page down (10 lines at a time)
-                let max_scroll = self.pools.len().saturating_sub(1);
-                self.scroll_offset = (self.scroll_offset + 10).min(max_scroll);
+                let max_visible = 10; // Number of rows visible at a time
+                let max_scroll = self.pools.len().saturating_sub(max_visible);
+                if self.scroll_offset < max_scroll {
+                    self.scroll_offset = (self.scroll_offset + max_visible).min(max_scroll);
+                    self.selected_pool_index = self.scroll_offset;
+                }
             }
+
             KeyCode::Home => {
                 // Scroll to the top
                 self.scroll_offset = 0;
