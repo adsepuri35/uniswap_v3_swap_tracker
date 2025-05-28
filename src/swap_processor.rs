@@ -9,6 +9,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
+use chrono::Local;
 
 
 // other file imports
@@ -46,11 +47,8 @@ pub async fn process_swap_event<P: Provider + Clone> (
 
     let swap_event= swap_event_log.data().clone(); // possible error
 
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-
+    let now = Local::now();
+    let timestamp = now.format("%Y-%m-%d %H:%M:%S").to_string();
 
     let amount0 = i128::try_from(swap_event_log.data().amount0).unwrap_or_default();
     let amount1 = i128::try_from(swap_event_log.data().amount1).unwrap_or_default();
@@ -108,7 +106,7 @@ async fn process_new_pool<P: Provider + Clone>(
     sqrt_price_x96: U160,
     liquidity: u128,
     tick: i32,
-    timestamp: u64,
+    timestamp: String,
 ) -> Result<()> {
     pool_address_to_index.insert(pool_address, pool_storage.len() as u16);
     
@@ -146,7 +144,7 @@ fn update_existing_pool(
     liquidity: u128,
     tick: i32,
     swap: Swap,
-    timestamp: u64,
+    timestamp: String,
 ) -> Result<()> {
     if let Some(&index) = pool_address_to_index.get(&pool_address) {
         let pool = &mut pool_storage[index as usize];

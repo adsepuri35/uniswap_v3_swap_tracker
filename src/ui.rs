@@ -301,9 +301,8 @@ impl Widget for &TerminalUI {
                     format!("${:.10}", price)
                 };
 
-                // Apply conditional styling
                 let color = pool.get_price_change_color();
-                Cell::from(price_text).style(ratatui::style::Style::default().fg(color))
+                Cell::from(price_text).style(ratatui::style::Style::default().fg(color))    
             };
 
             let liquidity_display = {
@@ -360,12 +359,12 @@ impl Widget for &TerminalUI {
             };
 
             Row::new(vec![
-                Cell::from(format!("{}", start_idx + i + 1)).style(style), // Index
+                Cell::from(format!("{}", start_idx + i +  1)).style(style), // Index
                 Cell::from(pool.get_pool_name().to_string()).style(style), // Pool Name
                 Cell::from("v3").style(style),
                 Cell::from(format!("{:.2}%", pool.get_fee_percent())).style(style), // Fee
                 Cell::from(format!("{}", pool.get_swap_count())).style(style), // Swaps
-                price_display.style(style), // Price
+                price_display, // Price
                 Cell::from(liquidity_display).style(style), // Liquidity
                 Cell::from(format!("{}", lower_tick)).style(style), // Lower Tick
                 Cell::from(format!("{}", upper_tick)).style(style), // Upper Tick
@@ -426,7 +425,7 @@ impl Widget for &TerminalUI {
                         Cell::from(""),
                     ])]
                 } else {
-                    swap_store.iter().map(|(swap, timestamp)| {
+                    swap_store.iter().rev().map(|(swap, timestamp)| {
                         Row::new(vec![
                             Cell::from(format!("{}", timestamp)), // Timestamp
                             Cell::from(format!("{}", swap.amount0)), // Amount0
@@ -438,7 +437,7 @@ impl Widget for &TerminalUI {
                 let swaps_table = Table::new(
                     rows,
                     vec![
-                        Constraint::Length(20),
+                        Constraint::Length(25),
                         Constraint::Length(20),
                         Constraint::Length(20),
                     ],

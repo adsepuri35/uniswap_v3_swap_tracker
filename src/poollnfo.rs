@@ -20,7 +20,7 @@ pub struct PoolInfo {
     tick_range: (i32, i32),
     current_apr: f64,
     volume: f64,
-    swap_store: Vec<(Swap, u64)>
+    swap_store: Vec<(Swap, String)>
     // stats to add: last swap (time), 
 }
 
@@ -39,7 +39,7 @@ impl PoolInfo {
         tick_range: (i32, i32),
         current_apr: f64,
         volume: f64,
-        swap_store: Vec<(Swap, u64)>,
+        swap_store: Vec<(Swap, String)>,
     ) -> Self {
 
         // generate pool name
@@ -95,11 +95,11 @@ impl PoolInfo {
 
     pub fn get_price_change_color(&self) -> ratatui::style::Color {
         if self.current_price > self.prev_price && self.prev_price != 0.0 {
-            ratatui::style::Color::Green // Price increased
+            ratatui::style::Color::Green
         } else if self.current_price < self.prev_price {
-            ratatui::style::Color::Red // Price decreased
+            ratatui::style::Color::Red
         } else {
-            ratatui::style::Color::White // No change
+            ratatui::style::Color::White
         }
     }
 
@@ -147,11 +147,11 @@ impl PoolInfo {
         self.volume += this_swap_volume
     }
 
-    pub fn add_swap_store(&mut self, new_swap: Swap, timestamp: u64) {
+    pub fn add_swap_store(&mut self, new_swap: Swap, timestamp: String) {
         self.swap_store.push((new_swap, timestamp));
     }
 
-    pub fn get_swap_store(&self) -> &Vec<(Swap, u64)> {
+    pub fn get_swap_store(&self) -> &Vec<(Swap, String)> {
         &self.swap_store
     }
 }
