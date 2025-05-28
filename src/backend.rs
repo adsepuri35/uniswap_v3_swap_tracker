@@ -4,11 +4,11 @@ use anyhow::Result;
 use dotenv::dotenv;
 use std::{env, collections::HashMap, time::{Duration, Instant}};
 use amms::amms::uniswap_v3::{IUniswapV3Factory::IUniswapV3FactoryInstance, IUniswapV3Pool::IUniswapV3PoolInstance, IUniswapV3PoolEvents::Swap};
-use futures::StreamExt;
 // use reqwest::Client;
 use tokio::sync::mpsc;
 use std::fs::OpenOptions;
 use std::io::BufWriter;
+use futures::stream::{self, StreamExt, SelectAll};
 
 
 // other file imports
@@ -16,6 +16,14 @@ use crate::ierc20::IERC20;
 use crate::poollnfo::PoolInfo;
 use crate::swap_processor::process_swap_event;
 use crate::tokenInfo::TokenInfo;
+
+use reqwest::Client;
+use serde::Deserialize;
+
+#[derive(Deserialize, Debug)]
+struct TokenPriceResponse {
+    price: Option<f64>,
+}
 
 
 
@@ -33,29 +41,70 @@ pub async fn run_ws_backend(tx: mpsc::Sender<Vec<PoolInfo>>) -> Result<()> {
     
     // let client = Client::new();
 
-    let url = format!("https://eth-mainnet.g.alchemy.com/v2/{}", api_key);
-    let provider = ProviderBuilder::new()
-        .network::<Ethereum>()
-        .connect_http(url.parse()?);
-
-    
-    // websocket provider
-    let ws_url = format!("wss://eth-mainnet.g.alchemy.com/v2/{}", api_key);
-    let ws_connect = WsConnect::new(&ws_url);
-    let ws_provider = ProviderBuilder::new()
-        .network::<Ethereum>()
-        .connect_ws(ws_connect)
-        .await?;
-
     let events = vec![
         Swap::SIGNATURE_HASH
     ];
+    let swap_filter = Filter::new().event_signature(events);
 
-    let ws_filter = Filter::new().event_signature(events);
+    // eth http provider
+    let eth_url = format!("https://eth-mainnet.g.alchemy.com/v2/{}", api_key);
+    let eth_provider = ProviderBuilder::new()
+        .network::<Ethereum>()
+        .connect_http(eth_url.parse()?);
 
-    let ws_subcription = ws_provider.subscribe_logs(&ws_filter).await?;
+    // base http provider
+    let base_url = format!("https://base-mainnet.g.alchemy.com/v2/{}", api_key);
+    let base_provider = ProviderBuilder::new()
+        .network::<Ethereum>()
+        .connect_http(base_url.parse()?);
 
-    let mut ws_stream = ws_subcription.into_stream();
+    // arb http provider
+    let arb_url = format!("https://arb-mainnet.g.alchemy.com/v2/{}", api_key);
+    let arb_provider = ProviderBuilder::new()
+        .network::<Ethereum>()
+        .connect_http(arb_url.parse()?);
+
+
+    
+    // eth websocket stream
+    let eth_ws_url = format!("wss://eth-mainnet.g.alchemy.com/v2/{}", api_key);
+    let eth_ws_connect = WsConnect::new(&eth_ws_url);
+    let eth_ws_provider = ProviderBuilder::new()
+        .network::<Ethereum>()
+        .connect_ws(eth_ws_connect)
+        .await?;
+
+    let eth_ws_subcription = eth_ws_provider.subscribe_logs(&swap_filter).await?;
+    let mut eth_ws_stream = eth_ws_subcription.into_stream().map(|log| ("eth", log)).boxed();
+
+    // base websocket stream
+    let base_ws_url = format!("wss://base-mainnet.g.alchemy.com/v2/{}", api_key);
+    let base_ws_connect = WsConnect::new(&base_ws_url);
+    let base_ws_provider = ProviderBuilder::new()
+        .network::<Ethereum>()
+        .connect_ws(base_ws_connect)
+        .await?;
+    let base_ws_subscription = base_ws_provider.subscribe_logs(&swap_filter).await?;
+    let mut base_ws_stream = base_ws_subscription.into_stream().map(|log| ("base", log)).boxed();
+
+    // arb websocket stream
+    let arb_ws_url = format!("wss://arb-mainnet.g.alchemy.com/v2/{}", api_key);
+    let arb_ws_connect = WsConnect::new(&arb_ws_url);
+    let arb_ws_provider = ProviderBuilder::new()
+        .network::<Ethereum>()
+        .connect_ws(arb_ws_connect)
+        .await?;
+    let arb_ws_subscription = arb_ws_provider.subscribe_logs(&swap_filter).await?;
+    let mut arb_ws_stream = arb_ws_subscription.into_stream().map(|log| ("arb", log)).boxed();
+
+
+    let mut merged_stream = stream::select_all(vec![
+        eth_ws_stream,
+        base_ws_stream,
+        arb_ws_stream,
+    ]);
+
+
 
 
     // println!("Uniswap tracker starting...");
@@ -90,13 +139,13 @@ pub async fn run_ws_backend(tx: mpsc::Sender<Vec<PoolInfo>>) -> Result<()> {
     // }
 
     let mut token_info_map: HashMap<Address, TokenInfo> = HashMap::new();
-    let mut pool_address_to_index: HashMap<Address, u16> = HashMap::new();
+    let mut pool_address_to_index: HashMap<(String, Address), u16> = HashMap::new();
     let mut pool_storage: Vec<PoolInfo> = Vec::new();
 
     //stream until interrupted
     loop {
-        match tokio::time::timeout(Duration::from_secs(3), ws_stream.next()).await {
-            Ok(Some(log)) => {
+        match tokio::time::timeout(Duration::from_secs(3), merged_stream.next()).await {
+            Ok(Some((network, log))) => {
                 if let Ok(decode) = log.log_decode::<Swap>() {
                     // let block_number = log.block_number;
                     // println!("block number: {:?}", block_number);
@@ -104,9 +153,19 @@ pub async fn run_ws_backend(tx: mpsc::Sender<Vec<PoolInfo>>) -> Result<()> {
 
                     let swap = decode.data();
 
+
+                    let provider = match network {
+                        "eth" => eth_provider.clone(),
+                        "base" => base_provider.clone(),
+                        "arb" => arb_provider.clone(),
+                        _ => {
+                            continue; // skip this iteration if inside a loop
+                        }
+                    };
                     match process_swap_event(
                         &log,
-                        provider.clone(),
+                        provider,
+                        network,
                         &mut token_info_map,
                         &mut pool_address_to_index,
                         &mut pool_storage
@@ -168,3 +227,6 @@ pub async fn run_ws_backend(tx: mpsc::Sender<Vec<PoolInfo>>) -> Result<()> {
 
     Ok(())
 }
+
+
+

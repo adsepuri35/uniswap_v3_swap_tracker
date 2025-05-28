@@ -12,7 +12,6 @@ use ratatui::{
 };
 use anyhow::Result;
 use tokio::sync::mpsc::Receiver;
-use tokio::time::Duration;
 use std::cmp::min;
 use alloy::core::primitives::Address;
 
@@ -213,7 +212,7 @@ impl Widget for &TerminalUI {
             "<Q> ".blue().bold(),
         ]);
 
-        let title = Line::from(" Uniswap Swap Tracker ".magenta().bold());
+        let title = Line::from(" Uniswap Swap Tracker (ETH For Now) ".magenta().bold());
 
         // Create a block for the UI
         let block = Block::bordered()
