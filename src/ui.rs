@@ -27,6 +27,7 @@ pub struct TerminalUI {
     scroll_offset: usize,
     selected_pool_index: usize,
     pool_address_to_index: HashMap<Address, usize>,
+    paused: bool,
 }
 
 impl Default for TerminalUI {
@@ -39,6 +40,7 @@ impl Default for TerminalUI {
             scroll_offset: 0,
             selected_pool_index: 0,
             pool_address_to_index: HashMap::new(),
+            paused: false,
         }
     }
 }
@@ -88,7 +90,9 @@ impl TerminalUI {
             }
             
             // Draw UI
-            terminal.draw(|frame| self.draw(frame))?;
+            if !self.paused {
+                terminal.draw(|frame| self.draw(frame))?;
+            }
             
             // Small sleep to prevent CPU spinning
             std::thread::sleep(std::time::Duration::from_millis(50));
@@ -114,8 +118,13 @@ impl TerminalUI {
 
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
+            // quit
             KeyCode::Char('q') => self.exit(),
 
+            // pause
+            KeyCode::Char('p') => {
+                self.paused = !self.paused;
+            }
 
             // Add scroll controls
             KeyCode::Up | KeyCode::Char('k') => {
@@ -192,6 +201,7 @@ impl TerminalUI {
             scroll_offset: 0,
             selected_pool_index: 0,
             pool_address_to_index: HashMap::new(),
+            paused: false,
         }
     }
 
@@ -208,11 +218,13 @@ impl Widget for &TerminalUI {
             "<PgUp>".blue().bold(),
             " Page Down ".into(),
             "<PgDn>".blue().bold(),
+            " Pause ".into(),
+            "<P>".blue().bold(),
             " Quit ".into(),
             "<Q> ".blue().bold(),
         ]);
 
-        let title = Line::from(" Uniswap Swap Tracker (ETH For Now) ".magenta().bold());
+        let title = Line::from(" Uniswap v3 Swap Tracker (ARB, BASE, ETH) ".magenta().bold());
 
         // Create a block for the UI
         let block = Block::bordered()
