@@ -24,6 +24,7 @@ pub struct TerminalUI {
     total_swaps: usize,
     rx: Option<Receiver<Vec<PoolInfo>>>,
     scroll_offset: usize,
+    selected_pool_index: usize,
 }
 
 impl Default for TerminalUI {
@@ -34,6 +35,7 @@ impl Default for TerminalUI {
             total_swaps: 0,
             rx: None,
             scroll_offset: 0,
+            selected_pool_index: 0,
         }
     }
 }
@@ -111,12 +113,14 @@ impl TerminalUI {
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.scroll_offset > 0 {
                     self.scroll_offset -= 1;
+                    self.selected_pool_index -= 1;
                 }
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 // Only scroll if there are more pools to show
                 if self.scroll_offset < self.pools.len().saturating_sub(1) {
                     self.scroll_offset += 1;
+                    self.selected_pool_index += 1;
                 }
             }
             KeyCode::PageUp => {
@@ -137,6 +141,7 @@ impl TerminalUI {
                 self.scroll_offset = self.pools.len().saturating_sub(1);
             }
 
+
             _ => {}
         }
     }
@@ -156,6 +161,7 @@ impl TerminalUI {
             total_swaps: 0,
             rx: Some(rx),
             scroll_offset: 0,
+            selected_pool_index: 0,
         }
     }
 
@@ -315,18 +321,25 @@ impl Widget for &TerminalUI {
                 }
             }
 
+            let is_selected = start_idx + i == self.selected_pool_index;
+            let style = if is_selected {
+                ratatui::style::Style::default().fg(ratatui::style::Color::Yellow).add_modifier(ratatui::style::Modifier::BOLD)
+            } else {
+                ratatui::style::Style::default()
+            };
+
             Row::new(vec![
-                Cell::from(format!("{}", start_idx + i + 1)), // Index
-                Cell::from(pool.get_pool_name().to_string()), // Pool Name
-                Cell::from("v3"),
-                Cell::from(format!("{:.2}%", pool.get_fee_percent())), // Fee
-                Cell::from(format!("{}", pool.get_swap_count())), // Swaps
-                price_display, // Price
-                Cell::from(liquidity_display), // Liquidity
-                Cell::from(format!("{}", lower_tick)), // Lower Tick
-                Cell::from(format!("{}", upper_tick)), // Upper Tick
-                Cell::from(format!("{:.2}%", pool.get_current_apr())), // APR
-                Cell::from(format_volume(pool.get_volume())), // Volume
+                Cell::from(format!("{}", start_idx + i + 1)).style(style), // Index
+                Cell::from(pool.get_pool_name().to_string()).style(style), // Pool Name
+                Cell::from("v3").style(style),
+                Cell::from(format!("{:.2}%", pool.get_fee_percent())).style(style), // Fee
+                Cell::from(format!("{}", pool.get_swap_count())).style(style), // Swaps
+                price_display.style(style), // Price
+                Cell::from(liquidity_display).style(style), // Liquidity
+                Cell::from(format!("{}", lower_tick)).style(style), // Lower Tick
+                Cell::from(format!("{}", upper_tick)).style(style), // Upper Tick
+                Cell::from(format!("{:.2}%", pool.get_current_apr())).style(style), // APR
+                Cell::from(format_volume(pool.get_volume())).style(style), // Volume
             ])
         }).collect();
 
@@ -360,10 +373,10 @@ impl Widget for &TerminalUI {
             .borders(ratatui::widgets::Borders::ALL)
             .title(" Track Swaps ");
 
-        // Render swaps for the pool at index 1
-        if self.pools.len() > 1 {
-            let pool = &self.pools[1]; // Get the pool at index 1
-            let swap_store = pool.get_swap_store(); // Retrieve the swap events
+        // Render swaps for the selected pool
+        if !self.pools.is_empty() {
+            let selected_pool = &self.pools[self.selected_pool_index]; // Get the selected pool
+            let swap_store = selected_pool.get_swap_store(); // Retrieve the swap events
 
             let headers = Row::new(vec![
                 Cell::from("Timestamp"),
@@ -372,13 +385,22 @@ impl Widget for &TerminalUI {
             ])
             .style(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD));
 
-            let rows: Vec<Row> = swap_store.iter().map(|(swap, timestamp)| {
-                Row::new(vec![
-                    Cell::from(format!("{}", timestamp)), // Timestamp
-                    Cell::from(format!("{}", swap.amount0)), // Amount0
-                    Cell::from(format!("{}", swap.amount1)), // Amount1
-                ])
-            }).collect();
+            // If there are no swaps, display an empty row
+            let rows: Vec<Row> = if swap_store.is_empty() {
+                vec![Row::new(vec![
+                    Cell::from("No swaps available"),
+                    Cell::from(""),
+                    Cell::from(""),
+                ])]
+            } else {
+                swap_store.iter().map(|(swap, timestamp)| {
+                    Row::new(vec![
+                        Cell::from(format!("{}", timestamp)), // Timestamp
+                        Cell::from(format!("{}", swap.amount0)), // Amount0
+                        Cell::from(format!("{}", swap.amount1)), // Amount1
+                    ])
+                }).collect()
+            };
 
             let swaps_table = Table::new(
                 rows,
@@ -389,12 +411,45 @@ impl Widget for &TerminalUI {
                 ],
             )
             .header(headers)
-            .block(right_block);
+            .block(
+                Block::default()
+                    .borders(ratatui::widgets::Borders::ALL)
+                    .title(format!(" Swaps for Pool: {} ", selected_pool.get_pool_name())),
+            );
 
             swaps_table.render(right_area, buf);
         } else {
-            // If no pool exists at index 1, render the right block as empty
-            right_block.render(right_area, buf);
+            // If no pools are available, render an empty swaps table
+            let headers = Row::new(vec![
+                Cell::from("Timestamp"),
+                Cell::from("Amount0"),
+                Cell::from("Amount1"),
+            ])
+            .style(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD));
+
+            let rows = vec![Row::new(vec![
+                Cell::from("No pools available"),
+                Cell::from(""),
+                Cell::from(""),
+            ])];
+
+            let swaps_table = Table::new(
+                rows,
+                vec![
+                    Constraint::Length(20),
+                    Constraint::Length(20),
+                    Constraint::Length(20),
+                ],
+            )
+            .header(headers)
+            .block(
+                Block::default()
+                    .borders(ratatui::widgets::Borders::ALL)
+                    .title(" Track Swaps "),
+            );
+
+            swaps_table.render(right_area, buf);
         }
+
     }
 }
