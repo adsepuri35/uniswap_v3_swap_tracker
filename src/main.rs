@@ -1,6 +1,8 @@
 use anyhow::Result;
 // use reqwest::Client;
 use tokio::sync::mpsc;
+use std::collections::HashMap;
+use alloy::core::primitives::Address;
 
 
 // other file imports
@@ -14,19 +16,16 @@ mod swap_processor;
 use swap_processor::process_swap_event;
 mod backend;
 mod tokenInfo;
+mod prices;
+use tokenInfo::TokenInfo;
 
 
 // const BLOCKS_TO_TRACK: u64 = 1;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // UI implmentation
-    // let mut terminal = ratatui::init();
-    // let ui_result = TerminalUI::default().run(&mut terminal);
-    // ratatui::restore();
-    // ui_result
 
-    let (tx, rx) = mpsc::channel::<(Vec<PoolInfo>, usize, usize, usize)>(100);
+    let (tx, rx) = mpsc::channel::<(Vec<PoolInfo>, usize, usize, usize, HashMap<Address, TokenInfo>)>(100);
     
     // Start the backend in a separate task
     let backend_handle = tokio::spawn(async move {

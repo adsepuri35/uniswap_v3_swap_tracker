@@ -16,17 +16,18 @@ use crate::ierc20::IERC20;
 use crate::poollnfo::PoolInfo;
 use crate::swap_processor::process_swap_event;
 use crate::tokenInfo::TokenInfo;
+use crate::prices::get_token_price;
 
 use reqwest::Client;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
 struct TokenPriceResponse {
-    price: Option<f64>,
+    price: Option<String>,
 }
 
 
-pub async fn run_ws_backend(tx: mpsc::Sender<(Vec<PoolInfo>, usize, usize, usize)>) -> Result<()> {
+pub async fn run_ws_backend(tx: mpsc::Sender<(Vec<PoolInfo>, usize, usize, usize, HashMap<Address, TokenInfo>)>) -> Result<()> {
     // load env variables
     dotenv().ok();
     
@@ -74,7 +75,7 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(Vec<PoolInfo>, usize, usize, usize
         .await?;
 
     let eth_ws_subcription = eth_ws_provider.subscribe_logs(&swap_filter).await?;
-    let mut eth_ws_stream = eth_ws_subcription.into_stream().map(|log| ("eth", log)).boxed();
+    let mut eth_ws_stream = eth_ws_subcription.into_stream().map(|log| ("eth-mainnet", log)).boxed();
 
     // base websocket stream
     let base_ws_url = format!("wss://base-mainnet.g.alchemy.com/v2/{}", api_key);
@@ -84,7 +85,7 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(Vec<PoolInfo>, usize, usize, usize
         .connect_ws(base_ws_connect)
         .await?;
     let base_ws_subscription = base_ws_provider.subscribe_logs(&swap_filter).await?;
-    let mut base_ws_stream = base_ws_subscription.into_stream().map(|log| ("base", log)).boxed();
+    let mut base_ws_stream = base_ws_subscription.into_stream().map(|log| ("base-mainnet", log)).boxed();
 
     // arb websocket stream
     let arb_ws_url = format!("wss://arb-mainnet.g.alchemy.com/v2/{}", api_key);
@@ -94,7 +95,7 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(Vec<PoolInfo>, usize, usize, usize
         .connect_ws(arb_ws_connect)
         .await?;
     let arb_ws_subscription = arb_ws_provider.subscribe_logs(&swap_filter).await?;
-    let mut arb_ws_stream = arb_ws_subscription.into_stream().map(|log: alloy::rpc::types::Log| ("arb", log)).boxed();
+    let mut arb_ws_stream = arb_ws_subscription.into_stream().map(|log: alloy::rpc::types::Log| ("arb-mainnet", log)).boxed();
 
 
     let mut merged_stream = stream::select_all(vec![
@@ -154,19 +155,18 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(Vec<PoolInfo>, usize, usize, usize
                     // println!("block number: {:?}", block_number);
                     // println!("swap detected");
 
-                    let swap = decode.data();
 
 
                     let provider = match network {
-                        "eth" => {
+                        "eth-mainnet" => {
                             eth_swaps += 1;
                             eth_provider.clone()
                         }
-                        "base" => {
+                        "base-mainnet" => {
                             base_swaps += 1;
                             base_provider.clone()
                         }
-                        "arb" => {
+                        "arb-mainnet" => {
                             arb_swaps += 1;
                             arb_provider.clone()
                         }
@@ -174,17 +174,23 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(Vec<PoolInfo>, usize, usize, usize
                             continue;
                         }
                     };
+
+
+                    let pool_address = log.address();
+
+
                     match process_swap_event(
                         &log,
                         provider,
                         network,  
                         &mut token_info_map,
                         &mut pool_address_to_index,
-                        &mut pool_storage
+                        &mut pool_storage,
+                        &api_key
                     ).await {
                         Ok(_) => {
                             // Only send on success
-                            tx.send((pool_storage.clone(), eth_swaps, base_swaps, arb_swaps)).await?;
+                            tx.send((pool_storage.clone(), eth_swaps, base_swaps, arb_swaps, token_info_map.clone())).await?;
                         },
                         Err(e) => {
                             let file_result = OpenOptions::new()
@@ -207,7 +213,7 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(Vec<PoolInfo>, usize, usize, usize
                     }
 
                     // send updated pools
-                    tx.send((pool_storage.clone(), eth_swaps, base_swaps, arb_swaps)).await?;
+                    tx.send((pool_storage.clone(), eth_swaps, base_swaps, arb_swaps, token_info_map.clone())).await?;
                 }
             },
             Ok(None) => {
@@ -224,7 +230,7 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(Vec<PoolInfo>, usize, usize, usize
 
                 if !pool_storage.is_empty() {
                     // println!("Attempting to send {} pools through channel", pool_storage.len());
-                    match tx.send((pool_storage.clone(), eth_swaps, base_swaps, arb_swaps)).await {
+                    match tx.send((pool_storage.clone(), eth_swaps, base_swaps, arb_swaps, token_info_map.clone())).await {
                         Ok(_) => {},
                         Err(e) => println!("Failed to send pools: {}", e),
                     }

@@ -1,5 +1,7 @@
-use std::io;
+use std::hash::Hash;
+use std::{io, ops::Add};
 use std::collections::HashMap;
+use amms::amms::Token;
 use crossterm::{event::{self, Event, KeyCode, KeyEvent, KeyEventKind}, terminal};
 use ratatui::{
     buffer::Buffer,
@@ -17,13 +19,14 @@ use alloy::core::primitives::Address;
 
 //file imports
 use crate::poollnfo::PoolInfo;
+use crate::tokenInfo::TokenInfo;
 
 #[derive(Debug)]
 pub struct TerminalUI   {
     exit: bool,
     pools: Vec<PoolInfo>,
     total_swaps: usize,
-    rx: Option<Receiver<(Vec<PoolInfo>, usize, usize, usize)>>,
+    rx: Option<Receiver<(Vec<PoolInfo>, usize, usize, usize, HashMap<Address, TokenInfo>)>>,
     scroll_offset: usize,
     selected_pool_index: usize,
     pool_address_to_index: HashMap<Address, usize>,
@@ -32,6 +35,7 @@ pub struct TerminalUI   {
     base_swaps: usize,
     arb_swaps: usize,
     show_prices: bool,
+    token_info_map: HashMap<Address, TokenInfo>,
 }
 
 impl Default for TerminalUI {
@@ -49,6 +53,7 @@ impl Default for TerminalUI {
             base_swaps: 0,
             arb_swaps: 0,
             show_prices: false,
+            token_info_map: HashMap::new(),
         }
     }
 }
@@ -75,13 +80,14 @@ impl TerminalUI {
             if let Some(rx) = &mut self.rx {
                 // Check channel for updates
                 match rx.try_recv() {
-                    Ok((pools, eth_swaps, base_swaps, arb_swaps)) => {
+                    Ok((pools, eth_swaps, base_swaps, arb_swaps, token_info_map)) => {
                         // Update the UI with new pool data
                         self.pools = pools;
                         self.total_swaps = self.pools.iter().map(|p| p.get_swap_count()).sum();
                         self.eth_swaps = eth_swaps;
                         self.base_swaps = base_swaps;
                         self.arb_swaps = arb_swaps;
+                        self.token_info_map = token_info_map;
 
 
 
@@ -210,7 +216,7 @@ impl TerminalUI {
         self.exit
     }
 
-    pub fn with_receiver(rx: Receiver<(Vec<PoolInfo>, usize, usize, usize)>) -> Self {
+    pub fn with_receiver(rx: Receiver<(Vec<PoolInfo>, usize, usize, usize, HashMap<Address, TokenInfo>)>) -> Self {
         Self {
             exit: false,
             pools: Vec::new(),
@@ -224,6 +230,7 @@ impl TerminalUI {
             base_swaps: 0,
             arb_swaps: 0,
             show_prices: false,
+            token_info_map: HashMap::new(),
         }
     }
 
@@ -463,10 +470,13 @@ impl Widget for &TerminalUI {
             ])
             .style(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD));
 
-            let rows = vec![Row::new(vec![
-                Cell::from("Prices TODO"),
-                Cell::from(""),
-            ])];
+            let rows: Vec<Row> = self.token_info_map.values().map(|token_info| {
+                let price = token_info.value.clone().unwrap_or("Unknown".to_string());
+                Row::new(vec![
+                    Cell::from(token_info.symbol.clone()),
+                    Cell::from(format!("${}", price)),
+                ])
+            }).collect();
 
             let prices_table = Table::new(
                 rows,

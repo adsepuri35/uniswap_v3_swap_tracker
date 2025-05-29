@@ -15,6 +15,7 @@ use chrono::Local;
 use crate::ierc20::IERC20;
 use crate::poollnfo::PoolInfo;
 use crate::tokenInfo::TokenInfo;
+use crate::prices::get_token_price;
 
 pub async fn process_swap_event<P: Provider + Clone> (
     log: &alloy::rpc::types::Log,
@@ -23,6 +24,7 @@ pub async fn process_swap_event<P: Provider + Clone> (
     token_info_map: &mut HashMap<Address, TokenInfo>,
     pool_address_to_index: &mut HashMap<(String, Address), u16>,
     pool_storage: &mut Vec<PoolInfo>,
+    api_key: &str,
 ) -> Result<()> {
     let data_bytes = &log.data().data;  // Access the bytes field directly
     
@@ -67,17 +69,45 @@ pub async fn process_swap_event<P: Provider + Clone> (
     let token0_address = contract.token0().call().await?;
     let token1_address = contract.token1().call().await?;
     if !token_info_map.contains_key(&token0_address) {
+        let token_price = get_token_price(network.to_string(), token0_address, api_key).await?;
+        let token_price_value = token_price.unwrap_or("Unknown".to_string()); // Provide a default value
         let ierc20_token0 = IERC20::new(token0_address, provider.clone());
         let token0_symbol = ierc20_token0.symbol().call().await?;
         let token0_decimal = ierc20_token0.decimals().call().await?;
-        token_info_map.insert(token0_address, TokenInfo::new(token0_address, token0_symbol, token0_decimal));
+        token_info_map.insert(
+            token0_address,
+            TokenInfo {
+                address: token0_address,
+                symbol: token0_symbol,
+                decimals: token0_decimal,
+                currency: "usd".to_string(),
+                value: Some(token_price_value),
+                last_updated: String::new(), // Add timestamp if needed
+            },
+        );
     }
+
+    // Fetch token1 price if not already in the map
     if !token_info_map.contains_key(&token1_address) {
+        let token_price = get_token_price(network.to_string(), token0_address, api_key).await?;
+        let token_price_value = token_price.unwrap_or("Unknown".to_string()); // Provide a default value
         let ierc20_token1 = IERC20::new(token1_address, provider.clone());
         let token1_symbol = ierc20_token1.symbol().call().await?;
         let token1_decimal = ierc20_token1.decimals().call().await?;
-        token_info_map.insert(token1_address, TokenInfo::new(token1_address, token1_symbol, token1_decimal));
+        token_info_map.insert(
+            token1_address,
+            TokenInfo {
+                address: token1_address,
+                symbol: token1_symbol,
+                decimals: token1_decimal,
+                currency: "usd".to_string(),
+                value: Some(token_price_value),
+                last_updated: String::new(), // Add timestamp if needed
+            },
+        );
     }
+
+    // update token price here
 
 
     let key = (network.to_string(), pool_address);
@@ -138,7 +168,7 @@ async fn process_new_pool<P: Provider + Clone>(
         key,
         u16::try_from(pool_storage.len() - 1).expect("pool_storage length exceeds u16::MAX"),
     );
-    
+
     Ok(())
 }
 
