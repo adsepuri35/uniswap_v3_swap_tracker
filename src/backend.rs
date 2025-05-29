@@ -26,7 +26,6 @@ struct TokenPriceResponse {
 }
 
 
-
 pub async fn run_ws_backend(tx: mpsc::Sender<(Vec<PoolInfo>, usize, usize, usize)>) -> Result<()> {
     // load env variables
     dotenv().ok();
@@ -95,7 +94,7 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(Vec<PoolInfo>, usize, usize, usize
         .connect_ws(arb_ws_connect)
         .await?;
     let arb_ws_subscription = arb_ws_provider.subscribe_logs(&swap_filter).await?;
-    let mut arb_ws_stream = arb_ws_subscription.into_stream().map(|log| ("arb", log)).boxed();
+    let mut arb_ws_stream = arb_ws_subscription.into_stream().map(|log: alloy::rpc::types::Log| ("arb", log)).boxed();
 
 
     let mut merged_stream = stream::select_all(vec![

@@ -19,7 +19,7 @@ use alloy::core::primitives::Address;
 use crate::poollnfo::PoolInfo;
 
 #[derive(Debug)]
-pub struct TerminalUI {
+pub struct TerminalUI   {
     exit: bool,
     pools: Vec<PoolInfo>,
     total_swaps: usize,
@@ -31,6 +31,7 @@ pub struct TerminalUI {
     eth_swaps: usize,
     base_swaps: usize,
     arb_swaps: usize,
+    show_prices: bool,
 }
 
 impl Default for TerminalUI {
@@ -47,6 +48,7 @@ impl Default for TerminalUI {
             eth_swaps: 0,
             base_swaps: 0,
             arb_swaps: 0,
+            show_prices: false,
         }
     }
 }
@@ -137,6 +139,11 @@ impl TerminalUI {
                 self.paused = !self.paused;
             }
 
+            // toggle prices
+            KeyCode::Char('t') => {
+                self.show_prices = !self.show_prices
+            }
+
             // Add scroll controls
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.selected_pool_index > 0 {
@@ -216,6 +223,7 @@ impl TerminalUI {
             eth_swaps: 0,
             base_swaps: 0,
             arb_swaps: 0,
+            show_prices: false,
         }
     }
 
@@ -445,73 +453,24 @@ impl Widget for &TerminalUI {
 
         table.render(pools_area, buf);
 
-        // Render swaps for the selected pool
-        if let Some(selected_pool) = sorted_pools.get(self.selected_pool_index) {
-            // Use the pool address to find the correct index in the original list
-            if let Some(&original_index) = self.pool_address_to_index.get(&selected_pool.pool_address) {
-                let pool = &self.pools[original_index]; // Get the correct pool from the original list
-                let swap_store = pool.get_swap_store(); // Retrieve the swap events
 
-                let headers = Row::new(vec![
-                    Cell::from("Timestamp"),
-                    Cell::from(format!("Amount of {}", pool.get_token0_symbol())),
-                    Cell::from(format!("Amount of {}", pool.get_token1_symbol()))
-                ])
-                .style(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD));
 
-                // If there are no swaps, display an empty row
-                let rows: Vec<Row> = if swap_store.is_empty() {
-                    vec![Row::new(vec![
-                        Cell::from("No swaps available"),
-                        Cell::from(""),
-                        Cell::from(""),
-                    ])]
-                } else {
-                    swap_store.iter().rev().map(|(amount0, amount1, timestamp)| {
-                        Row::new(vec![
-                            Cell::from(format!("{}", timestamp)), // Timestamp
-                            Cell::from(format!("{}", amount0)), // Amount0
-                            Cell::from(format!("{}", amount1)), // Amount1
-                        ])
-                    }).collect()
-                };
+        if self.show_prices {
 
-                let swaps_table = Table::new(
-                    rows,
-                    vec![
-                        Constraint::Length(25),
-                        Constraint::Length(20),
-                        Constraint::Length(20),
-                    ],
-                )
-                .header(headers)
-                .block(
-                    Block::default()
-                        .borders(ratatui::widgets::Borders::ALL)
-                        .title(format!(" Swaps for Pool: {} ", pool.get_pool_name())),
-                );
-
-                swaps_table.render(right_area, buf);
-            }
-        } else {
-            // If no pools are available, render an empty swaps table
             let headers = Row::new(vec![
-                Cell::from("Timestamp"),
-                Cell::from("Amount0"),
-                Cell::from("Amount1"),
+                Cell::from("Token"),
+                Cell::from("Price"),
             ])
             .style(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD));
 
             let rows = vec![Row::new(vec![
-                Cell::from("No pools available"),
-                Cell::from(""),
+                Cell::from("Prices TODO"),
                 Cell::from(""),
             ])];
 
-            let swaps_table = Table::new(
+            let prices_table = Table::new(
                 rows,
                 vec![
-                    Constraint::Length(20),
                     Constraint::Length(20),
                     Constraint::Length(20),
                 ],
@@ -520,10 +479,92 @@ impl Widget for &TerminalUI {
             .block(
                 Block::default()
                     .borders(ratatui::widgets::Borders::ALL)
-                    .title(" Track Swaps "),
+                    .title(" Prices "),
             );
 
-            swaps_table.render(right_area, buf);
+            prices_table.render(right_area, buf);
+
+        } else {
+            // Render swaps for the selected pool
+            if let Some(selected_pool) = sorted_pools.get(self.selected_pool_index) {
+                // Use the pool address to find the correct index in the original list
+                if let Some(&original_index) = self.pool_address_to_index.get(&selected_pool.pool_address) {
+                    let pool = &self.pools[original_index]; // Get the correct pool from the original list
+                    let swap_store = pool.get_swap_store(); // Retrieve the swap events
+
+                    let headers = Row::new(vec![
+                        Cell::from("Timestamp"),
+                        Cell::from(format!("Amount of {}", pool.get_token0_symbol())),
+                        Cell::from(format!("Amount of {}", pool.get_token1_symbol()))
+                    ])
+                    .style(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD));
+
+                    // If there are no swaps, display an empty row
+                    let rows: Vec<Row> = if swap_store.is_empty() {
+                        vec![Row::new(vec![
+                            Cell::from("No swaps available"),
+                            Cell::from(""),
+                            Cell::from(""),
+                        ])]
+                    } else {
+                        swap_store.iter().rev().map(|(amount0, amount1, timestamp)| {
+                            Row::new(vec![
+                                Cell::from(format!("{}", timestamp)), // Timestamp
+                                Cell::from(format!("{}", amount0)), // Amount0
+                                Cell::from(format!("{}", amount1)), // Amount1
+                            ])
+                        }).collect()
+                    };
+
+                    let swaps_table = Table::new(
+                        rows,
+                        vec![
+                            Constraint::Length(25),
+                            Constraint::Length(20),
+                            Constraint::Length(20),
+                        ],
+                    )
+                    .header(headers)
+                    .block(
+                        Block::default()
+                            .borders(ratatui::widgets::Borders::ALL)
+                            .title(format!(" Swaps for Pool: {} ", pool.get_pool_name())),
+                    );
+
+                    swaps_table.render(right_area, buf);
+                }
+            } else {
+                // If no pools are available, render an empty swaps table
+                let headers = Row::new(vec![
+                    Cell::from("Timestamp"),
+                    Cell::from("Amount0"),
+                    Cell::from("Amount1"),
+                ])
+                .style(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD));
+
+                let rows = vec![Row::new(vec![
+                    Cell::from("No pools available"),
+                    Cell::from(""),
+                    Cell::from(""),
+                ])];
+
+                let swaps_table = Table::new(
+                    rows,
+                    vec![
+                        Constraint::Length(20),
+                        Constraint::Length(20),
+                        Constraint::Length(20),
+                    ],
+                )
+                .header(headers)
+                .block(
+                    Block::default()
+                        .borders(ratatui::widgets::Borders::ALL)
+                        .title(" Track Swaps "),
+                );
+
+                swaps_table.render(right_area, buf);
+            }
         }
 
     }
