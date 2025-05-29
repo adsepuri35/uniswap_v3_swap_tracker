@@ -27,7 +27,7 @@ struct TokenPriceResponse {
 
 
 
-pub async fn run_ws_backend(tx: mpsc::Sender<Vec<PoolInfo>>) -> Result<()> {
+pub async fn run_ws_backend(tx: mpsc::Sender<(Vec<PoolInfo>, usize, usize, usize)>) -> Result<()> {
     // load env variables
     dotenv().ok();
     
@@ -142,6 +142,10 @@ pub async fn run_ws_backend(tx: mpsc::Sender<Vec<PoolInfo>>) -> Result<()> {
     let mut pool_address_to_index: HashMap<(String, Address), u16> = HashMap::new();
     let mut pool_storage: Vec<PoolInfo> = Vec::new();
 
+    let mut eth_swaps = 0;
+    let mut base_swaps = 0;
+    let mut arb_swaps = 0;
+
     //stream until interrupted
     loop {
         match tokio::time::timeout(Duration::from_secs(3), merged_stream.next()).await {
@@ -155,24 +159,33 @@ pub async fn run_ws_backend(tx: mpsc::Sender<Vec<PoolInfo>>) -> Result<()> {
 
 
                     let provider = match network {
-                        "eth" => eth_provider.clone(),
-                        "base" => base_provider.clone(),
-                        "arb" => arb_provider.clone(),
+                        "eth" => {
+                            eth_swaps += 1;
+                            eth_provider.clone()
+                        }
+                        "base" => {
+                            base_swaps += 1;
+                            base_provider.clone()
+                        }
+                        "arb" => {
+                            arb_swaps += 1;
+                            arb_provider.clone()
+                        }
                         _ => {
-                            continue; // skip this iteration if inside a loop
+                            continue;
                         }
                     };
                     match process_swap_event(
                         &log,
                         provider,
-                        network,
+                        network,  
                         &mut token_info_map,
                         &mut pool_address_to_index,
                         &mut pool_storage
                     ).await {
                         Ok(_) => {
                             // Only send on success
-                            tx.send(pool_storage.clone()).await?;
+                            tx.send((pool_storage.clone(), eth_swaps, base_swaps, arb_swaps)).await?;
                         },
                         Err(e) => {
                             let file_result = OpenOptions::new()
@@ -195,7 +208,7 @@ pub async fn run_ws_backend(tx: mpsc::Sender<Vec<PoolInfo>>) -> Result<()> {
                     }
 
                     // send updated pools
-                    tx.send(pool_storage.clone()).await?;
+                    tx.send((pool_storage.clone(), eth_swaps, base_swaps, arb_swaps)).await?;
                 }
             },
             Ok(None) => {
@@ -212,7 +225,7 @@ pub async fn run_ws_backend(tx: mpsc::Sender<Vec<PoolInfo>>) -> Result<()> {
 
                 if !pool_storage.is_empty() {
                     // println!("Attempting to send {} pools through channel", pool_storage.len());
-                    match tx.send(pool_storage.clone()).await {
+                    match tx.send((pool_storage.clone(), eth_swaps, base_swaps, arb_swaps)).await {
                         Ok(_) => {},
                         Err(e) => println!("Failed to send pools: {}", e),
                     }

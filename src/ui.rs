@@ -23,11 +23,14 @@ pub struct TerminalUI {
     exit: bool,
     pools: Vec<PoolInfo>,
     total_swaps: usize,
-    rx: Option<Receiver<Vec<PoolInfo>>>,
+    rx: Option<Receiver<(Vec<PoolInfo>, usize, usize, usize)>>,
     scroll_offset: usize,
     selected_pool_index: usize,
     pool_address_to_index: HashMap<Address, usize>,
     paused: bool,
+    eth_swaps: usize,
+    base_swaps: usize,
+    arb_swaps: usize,
 }
 
 impl Default for TerminalUI {
@@ -41,6 +44,9 @@ impl Default for TerminalUI {
             selected_pool_index: 0,
             pool_address_to_index: HashMap::new(),
             paused: false,
+            eth_swaps: 0,
+            base_swaps: 0,
+            arb_swaps: 0,
         }
     }
 }
@@ -67,10 +73,15 @@ impl TerminalUI {
             if let Some(rx) = &mut self.rx {
                 // Check channel for updates
                 match rx.try_recv() {
-                    Ok(pools) => {
+                    Ok((pools, eth_swaps, base_swaps, arb_swaps)) => {
                         // Update the UI with new pool data
                         self.pools = pools;
                         self.total_swaps = self.pools.iter().map(|p| p.get_swap_count()).sum();
+                        self.eth_swaps = eth_swaps;
+                        self.base_swaps = base_swaps;
+                        self.arb_swaps = arb_swaps;
+
+
 
                         self.pool_address_to_index.clear();
                         for (index, pool) in self.pools.iter().enumerate() {
@@ -192,7 +203,7 @@ impl TerminalUI {
         self.exit
     }
 
-    pub fn with_receiver(rx: Receiver<Vec<PoolInfo>>) -> Self {
+    pub fn with_receiver(rx: Receiver<(Vec<PoolInfo>, usize, usize, usize)>) -> Self {
         Self {
             exit: false,
             pools: Vec::new(),
@@ -202,6 +213,9 @@ impl TerminalUI {
             selected_pool_index: 0,
             pool_address_to_index: HashMap::new(),
             paused: false,
+            eth_swaps: 0,
+            base_swaps: 0,
+            arb_swaps: 0,
         }
     }
 
@@ -239,7 +253,7 @@ impl Widget for &TerminalUI {
         let inner_area = block.inner(area);
 
         // Create header with total stats
-        let header = format!(" Pools Tracked: {} | Swaps Tracked: {}", self.pools.len(), self.total_swaps);
+        let header = format!(" Pools Tracked: {} | Swaps Tracked: {} | ETH Swaps: {} | BASE Swaps: {} | ARB Swaps: {} ", self.pools.len(), self.total_swaps, self.eth_swaps, self.base_swaps, self.arb_swaps);
         let header_text = Text::from(header);
 
         // Render header

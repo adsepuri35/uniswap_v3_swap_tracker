@@ -26,7 +26,7 @@ async fn main() -> Result<()> {
     // ratatui::restore();
     // ui_result
 
-    let (tx, rx) = mpsc::channel::<Vec<PoolInfo>>(100);
+    let (tx, rx) = mpsc::channel::<(Vec<PoolInfo>, usize, usize, usize)>(100);
     
     // Start the backend in a separate task
     let backend_handle = tokio::spawn(async move {
