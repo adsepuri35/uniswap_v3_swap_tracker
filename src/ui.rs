@@ -247,6 +247,8 @@ impl Widget for &TerminalUI {
             "<PgUp>".blue().bold(),
             " Page Down ".into(),
             "<PgDn>".blue().bold(),
+            " Show Prices ".into(),
+            "<T>".blue().bold(),
             " Pause ".into(),
             "<P>".blue().bold(),
             " Quit ".into(),
@@ -268,7 +270,7 @@ impl Widget for &TerminalUI {
         let inner_area = block.inner(area);
 
         // Create header with total stats
-        let header = format!(" Pools Tracked: {} | Swaps Tracked: {} | ETH Swaps: {} | BASE Swaps: {} | ARB Swaps: {} ", self.pools.len(), self.total_swaps, self.eth_swaps, self.base_swaps, self.arb_swaps);
+        let header = format!(" Pools Tracked: {} | Swaps Tracked: {} | Tokens Tracked: {} | ETH Swaps: {} | BASE Swaps: {} | ARB Swaps: {} ", self.pools.len(), self.total_swaps, self.token_info_map.len(), self.eth_swaps, self.base_swaps, self.arb_swaps);
         let header_text = Text::from(header);
 
         // Render header
@@ -466,23 +468,28 @@ impl Widget for &TerminalUI {
 
             let headers = Row::new(vec![
                 Cell::from("Token"),
-                Cell::from("Price"),
+                Cell::from("Price (USD)"),
             ])
             .style(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD));
 
             let rows: Vec<Row> = self.token_info_map.values().map(|token_info| {
                 let price = token_info.value.clone().unwrap_or("Unknown".to_string());
+                let price_display = if price == "Unknown" {
+                    price // No `$` sign for unknown prices
+                } else {
+                    format!("${}", price) // Add `$` sign for known prices
+                };
                 Row::new(vec![
                     Cell::from(token_info.symbol.clone()),
-                    Cell::from(format!("${}", price)),
+                    Cell::from(price_display),
                 ])
             }).collect();
 
             let prices_table = Table::new(
                 rows,
                 vec![
-                    Constraint::Length(20),
-                    Constraint::Length(20),
+                    Constraint::Length(30),
+                    Constraint::Length(30),
                 ],
             )
             .header(headers)
