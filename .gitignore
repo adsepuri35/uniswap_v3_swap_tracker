@@ -21,3 +21,7 @@ target/
 /target
 
 .env
+
+extreme_ticks.log
+price_calculation.log
+swap_errors.log
