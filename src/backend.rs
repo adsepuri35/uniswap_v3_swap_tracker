@@ -117,79 +117,62 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(Vec<PoolInfo>, usize, usize, usize
     let mut arb_swaps = 0;
 
     //stream until interrupted
-    loop {
-        match tokio::time::timeout(Duration::from_secs(3), merged_stream.next()).await {
-            Ok(Some((network, log))) => {
-                if let Ok(decode) = log.log_decode::<Swap>() {
+
+    while let Some((network, log)) = merged_stream.next().await {
+        if let Ok(decode) = log.log_decode::<Swap>() {
 
 
-                    let provider = match network {
-                        "eth-mainnet" => {
-                            eth_swaps += 1;
-                            eth_provider.clone()
-                        }
-                        "base-mainnet" => {
-                            base_swaps += 1;
-                            base_provider.clone()
-                        }
-                        "arb-mainnet" => {
-                            arb_swaps += 1;
-                            arb_provider.clone()
-                        }
-                        _ => {
-                            continue;
-                        }
-                    };
-
-
-                    let pool_address = log.address();
-
-
-                    match process_swap_event(
-                        &log,
-                        provider,
-                        network,  
-                        &mut token_info_map,
-                        &mut pool_address_to_index,
-                        &mut pool_storage,
-                        &api_key
-                    ).await {
-                        Ok(_) => {
-                            // Only send on success
-                            tx.send((pool_storage.clone(), eth_swaps, base_swaps, arb_swaps, token_info_map.clone())).await?;
-                        },
-                        Err(e) => {
-                            let file_result = OpenOptions::new()
-                                .create(true)
-                                .append(true)
-                                .open("swap_errors.log");
-                            
-                            match file_result {
-                                Ok(file) => {
-                                    // Write to the log file
-                                    let mut writer = BufWriter::new(file);
-                                    writeln!(writer, "Error processing swap: {}", e).ok();
-                                },
-                                Err(file_err) => {
-                                    // If we can't open the file, write to stderr directly
-                                    eprintln!("Error processing swap: {} (couldn't open log: {})", e, file_err);
-                                }
-                            }
-                        }
-                    }
+            let provider = match network {
+                "eth-mainnet" => {
+                    eth_swaps += 1;
+                    eth_provider.clone()
                 }
-            },
-            Ok(None) => {
-                println!("\nWebSocket stream ended unexpectedly");
-                break;
-            },
-            Err(_) => {
-                io::stdout().flush();
+                "base-mainnet" => {
+                    base_swaps += 1;
+                    base_provider.clone()
+                }
+                "arb-mainnet" => {
+                    arb_swaps += 1;
+                    arb_provider.clone()
+                }
+                _ => {
+                    continue;
+                }
+            };
 
-                if !pool_storage.is_empty() {
-                    match tx.send((pool_storage.clone(), eth_swaps, base_swaps, arb_swaps, token_info_map.clone())).await {
-                        Ok(_) => {},
-                        Err(e) => println!("Failed to send pools: {}", e),
+
+            let pool_address = log.address();
+
+
+            match process_swap_event(
+                &log,
+                provider,
+                network,  
+                &mut token_info_map,
+                &mut pool_address_to_index,
+                &mut pool_storage,
+                &api_key
+            ).await {
+                Ok(_) => {
+                    // Only send on success
+                    tx.send((pool_storage.clone(), eth_swaps, base_swaps, arb_swaps, token_info_map.clone())).await?;
+                },
+                Err(e) => {
+                    let file_result = OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open("swap_errors.log");
+                    
+                    match file_result {
+                        Ok(file) => {
+                            // Write to the log file
+                            let mut writer = BufWriter::new(file);
+                            writeln!(writer, "Error processing swap: {}", e).ok();
+                        },
+                        Err(file_err) => {
+                            // If we can't open the file, write to stderr directly
+                            eprintln!("Error processing swap: {} (couldn't open log: {})", e, file_err);
+                        }
                     }
                 }
             }
