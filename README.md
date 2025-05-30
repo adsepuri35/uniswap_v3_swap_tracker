@@ -25,11 +25,11 @@ A Rust-based terminal dApp that leverages WebSockets to listen to on-chain Unisw
 
 ### High-Level Architecture
 
-<img src="sp_sys.png">
+<img src="img/sp_sys.png">
 
 ### Terminal UI
 
-<img src="with_prices.png">
+<img src="img/with_prices.png">
 
 ### Installation
 
