@@ -25,3 +25,7 @@ target/
 extreme_ticks.log
 price_calculation.log
 swap_errors.log
+
+sp_sys.png
+with_prices.png
+with_swaps.png
