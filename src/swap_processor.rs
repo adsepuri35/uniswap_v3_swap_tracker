@@ -80,7 +80,6 @@ pub async fn process_swap_event<P: Provider + Clone> (
                 address: token0_address,
                 symbol: token0_symbol,
                 decimals: token0_decimal,
-                currency: "usd".to_string(),
                 value: Some(token_price_value),
                 last_updated: String::new(), // Add timestamp if needed
             },
@@ -100,7 +99,6 @@ pub async fn process_swap_event<P: Provider + Clone> (
                 address: token1_address,
                 symbol: token1_symbol,
                 decimals: token1_decimal,
-                currency: "usd".to_string(),
                 value: Some(token_price_value),
                 last_updated: String::new(), // Add timestamp if needed
             },
@@ -144,8 +142,8 @@ async fn process_new_pool<P: Provider + Clone>(
     let fee = fee_uint.to::<u32>();
 
     // calculate current price for pool
-    let token0_decimals = token_info_map.get(&token0_address).unwrap().get_decimals();
-    let token1_decimals = token_info_map.get(&token1_address).unwrap().get_decimals();
+    let token0_decimals = token_info_map.get(&token0_address).unwrap().decimals;
+    let token1_decimals = token_info_map.get(&token1_address).unwrap().decimals;
     let current_price = calculate_price_from_sqrt_price_x96(sqrt_price_x96, token0_decimals, token1_decimals);
 
     let tick_spacing = contract.tickSpacing().call().await?.as_i32();
@@ -194,7 +192,7 @@ fn update_existing_pool(
         let token0_decimals = pool.get_token0_decimals();
         let token1_decimals = pool.get_token1_decimals();
         let new_price = calculate_price_from_sqrt_price_x96(sqrt_price_x96, token0_decimals, token1_decimals);
-        let new_apr = calculate_apr(pool.get_fee(), pool.get_swap_count(), pool.get_liquidity());
+        let new_apr = calculate_apr(pool.fee, pool.swaps_tracked, pool.liquidity);
         pool.update_current_price(new_price);
         pool.update_liquidity(liquidity);
         pool.update_current_apr(new_apr);

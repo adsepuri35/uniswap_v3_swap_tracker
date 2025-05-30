@@ -1,27 +1,25 @@
 use alloy::core::primitives::{Address};
 
 use crate::tokenInfo::TokenInfo;
-use amms::amms::uniswap_v3::{IUniswapV3PoolEvents::Swap};
 
 
 #[derive(Debug, Clone)]
 pub struct PoolInfo {
     pub pool_address: Address,
-    pool_name: String,
-    token0: Address,
-    token1: Address,
-    token0_info: TokenInfo,
-    token1_info: TokenInfo,
-    swaps_tracked: usize,
-    fee: u32,
-    current_price: f64,
-    prev_price: f64,
-    liquidity: u128,
-    tick_range: (i32, i32),
-    current_apr: f64,
-    volume: f64,
-    swap_store: Vec<(f64, f64, String)> // amount0, amount1, time
-    // stats to add: last swap (time), 
+    pub pool_name: String,
+    pub token0: Address,
+    pub token1: Address,
+    pub token0_info: TokenInfo,
+    pub token1_info: TokenInfo,
+    pub swaps_tracked: usize,
+    pub fee: u32,
+    pub current_price: f64,
+    pub prev_price: f64,
+    pub liquidity: u128,
+    pub tick_range: (i32, i32),
+    pub current_apr: f64,
+    pub volume: f64,
+    pub swap_store: Vec<(f64, f64, String)> // amount0, amount1, time
 }
 
 impl PoolInfo {
@@ -43,8 +41,8 @@ impl PoolInfo {
     ) -> Self {
 
         // generate pool name
-        let token0_symbol = token0_info.get_symbol();
-        let token1_symbol = token1_info.get_symbol();
+        let token0_symbol = &token0_info.symbol;
+        let token1_symbol = &token1_info.symbol;
         let pool_name = if token0_symbol.is_empty() || token1_symbol.is_empty() {
             format!("Pool-{:?}", pool_address)
         } else if token0_symbol < token1_symbol {
@@ -76,18 +74,6 @@ impl PoolInfo {
         self.swaps_tracked += 1;
     }
 
-    pub fn get_swap_count(&self) -> usize {
-        self.swaps_tracked
-    }
-
-    pub fn get_pool_name(&self) -> &str {
-        &self.pool_name
-    }
-
-    pub fn get_current_price(&self) -> f64 {
-        self.current_price
-    }
-
     pub fn update_current_price(&mut self, new_price: f64) {
         self.prev_price = self.current_price;
         self.current_price = new_price;
@@ -104,62 +90,46 @@ impl PoolInfo {
     }
 
     pub fn get_token0_decimals(&self) -> u8 {
-        self.token0_info.get_decimals()
+        self.token0_info.decimals
     }
     
     pub fn get_token1_decimals(&self) -> u8 {
-        self.token1_info.get_decimals()
-    }
-
-    pub fn get_liquidity(&self) -> u128 {
-        self.liquidity
+        self.token1_info.decimals
     }
 
     pub fn update_liquidity(&mut self, new_liquidity: u128) {
         self.liquidity = new_liquidity;
     }
 
-    pub fn get_tick_range(&self) -> (i32, i32) {
-        self.tick_range
-    }
-
-    pub fn get_fee(&self) -> u32 {
-        self.fee
-    }
-
     pub fn get_fee_percent(&self) -> f64 {
         self.fee as f64 / 10000.0
-    }
-
-    pub fn get_current_apr(&self) -> f64 {
-        self.current_apr
     }
 
     pub fn update_current_apr(&mut self, new_apr: f64) {
         self.current_apr = new_apr
     }
 
-    pub fn get_volume(&self) -> f64 {
-        self.volume
-    }
 
     pub fn add_volume(&mut self, this_swap_volume: f64) {
         self.volume += this_swap_volume
     }
 
     pub fn add_swap_store(&mut self, amount0: f64, amount1: f64, timestamp: String) {
+        const MAX_SWAP_HISTORY: usize = 80;
+
         self.swap_store.push((amount0, amount1, timestamp));
+
+        if (self.swap_store.len() > MAX_SWAP_HISTORY) {
+            self.swap_store = self.swap_store.split_off(self.swap_store.len() - MAX_SWAP_HISTORY);
+        }
     }
 
-    pub fn get_swap_store(&self) -> &Vec<(f64, f64, String)> {
-        &self.swap_store
+    pub fn get_token0_symbol(&self) -> &str {
+        &self.token0_info.symbol
     }
 
-    pub fn get_token0_symbol(&self) -> String {
-        self.token0_info.symbol.clone()
-    }
-
-    pub fn get_token1_symbol(&self) -> String {
-        self.token1_info.symbol.clone()
+    pub fn get_token1_symbol(&self) -> &str {
+        &self.token1_info.symbol
     }
 }
+

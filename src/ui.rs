@@ -83,7 +83,7 @@ impl TerminalUI {
                     Ok((pools, eth_swaps, base_swaps, arb_swaps, token_info_map)) => {
                         // Update the UI with new pool data
                         self.pools = pools;
-                        self.total_swaps = self.pools.iter().map(|p| p.get_swap_count()).sum();
+                        self.total_swaps = self.pools.iter().map(|p| p.swaps_tracked).sum();
                         self.eth_swaps = eth_swaps;
                         self.base_swaps = base_swaps;
                         self.arb_swaps = arb_swaps;
@@ -296,7 +296,7 @@ impl Widget for &TerminalUI {
 
         // Render Pools block
         let mut sorted_pools = self.pools.clone();
-        sorted_pools.sort_by(|a, b| b.get_swap_count().cmp(&a.get_swap_count()));
+        sorted_pools.sort_by(|a, b| b.swaps_tracked.cmp(&a.swaps_tracked));
 
         let pool_count = self.pools.len();
         let max_visible = pools_area.height as usize;
@@ -329,7 +329,7 @@ impl Widget for &TerminalUI {
             let is_selected = start_idx + i == self.selected_pool_index;
 
             let price_display = {
-                let price = pool.get_current_price();
+                let price = pool.current_price;
                 let price_text = if price == 0.0 {
                     "Price unknown".to_string()
                 } else if price >= 1_000_000.0 {
@@ -370,7 +370,7 @@ impl Widget for &TerminalUI {
             };
 
             let liquidity_display = {
-                let liquidity = pool.get_liquidity();
+                let liquidity = pool.liquidity;
                 if liquidity >= 1_000_000_000_000_000_000 {
                     format!("{:.2}Q", liquidity as f64 / 1_000_000_000_000_000_000.0)
                 } else if liquidity >= 1_000_000_000_000_000 {
@@ -388,7 +388,7 @@ impl Widget for &TerminalUI {
                 }
             };
 
-            let (lower_tick, upper_tick) = pool.get_tick_range();
+            let (lower_tick, upper_tick) = pool.tick_range;
 
             fn format_volume(volume: f64) -> String {
                 if volume >= 1_000_000_000_000_000_000.0 {
@@ -424,16 +424,16 @@ impl Widget for &TerminalUI {
 
             Row::new(vec![
                 Cell::from(format!("{}", start_idx + i +  1)).style(style), // Index
-                Cell::from(pool.get_pool_name().to_string()).style(style), // Pool Name
+                Cell::from(pool.pool_name.to_string()).style(style), // Pool Name
                 Cell::from("v3").style(style),
                 Cell::from(format!("{:.2}%", pool.get_fee_percent())).style(style), // Fee
-                Cell::from(format!("{}", pool.get_swap_count())).style(style), // Swaps
+                Cell::from(format!("{}", pool.swaps_tracked)).style(style), // Swaps
                 price_display, // Price
                 Cell::from(liquidity_display).style(style), // Liquidity
                 Cell::from(format!("{}", lower_tick)).style(style), // Lower Tick
                 Cell::from(format!("{}", upper_tick)).style(style), // Upper Tick
-                Cell::from(format!("{:.2}%", pool.get_current_apr())).style(style), // APR
-                Cell::from(format_volume(pool.get_volume())).style(style), // Volume
+                Cell::from(format!("{:.2}%", pool.current_apr)).style(style), // APR
+                Cell::from(format_volume(pool.volume)).style(style), // Volume
             ])
         }).collect();
 
@@ -507,7 +507,7 @@ impl Widget for &TerminalUI {
                 // Use the pool address to find the correct index in the original list
                 if let Some(&original_index) = self.pool_address_to_index.get(&selected_pool.pool_address) {
                     let pool = &self.pools[original_index]; // Get the correct pool from the original list
-                    let swap_store = pool.get_swap_store(); // Retrieve the swap events
+                    let swap_store = &pool.swap_store; // Retrieve the swap events
 
                     let headers = Row::new(vec![
                         Cell::from("Timestamp"),
@@ -545,7 +545,7 @@ impl Widget for &TerminalUI {
                     .block(
                         Block::default()
                             .borders(ratatui::widgets::Borders::ALL)
-                            .title(format!(" Swaps for Pool: {} ", pool.get_pool_name())),
+                            .title(format!(" Swaps for Pool: {} ", pool.pool_name)),
                     );
 
                     swaps_table.render(right_area, buf);
