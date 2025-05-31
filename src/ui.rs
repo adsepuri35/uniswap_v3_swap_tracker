@@ -24,17 +24,16 @@ use crate::tokenInfo::TokenInfo;
 #[derive(Debug)]
 pub struct TerminalUI   {
     exit: bool,
-    pools: Vec<PoolInfo>,
     total_swaps: usize,
-    rx: Option<Receiver<(Vec<PoolInfo>, usize, usize, usize, HashMap<Address, TokenInfo>)>>,
+    rx: Option<Receiver<(HashMap<(String, Address), PoolInfo>, usize, usize, usize, HashMap<Address, TokenInfo>)>>,
     scroll_offset: usize,
     selected_pool_index: usize,
-    pool_address_to_index: HashMap<Address, usize>,
     paused: bool,
     eth_swaps: usize,
     base_swaps: usize,
     arb_swaps: usize,
     show_prices: bool,
+    pool_info_map: HashMap<(String, Address), PoolInfo>,
     token_info_map: HashMap<Address, TokenInfo>,
 }
 
@@ -42,17 +41,16 @@ impl Default for TerminalUI {
     fn default() -> Self {
         Self {
             exit: false,
-            pools: Vec::new(),
             total_swaps: 0,
             rx: None,
             scroll_offset: 0,
             selected_pool_index: 0,
-            pool_address_to_index: HashMap::new(),
             paused: false,
             eth_swaps: 0,
             base_swaps: 0,
             arb_swaps: 0,
             show_prices: false,
+            pool_info_map: HashMap::new(),
             token_info_map: HashMap::new(),
         }
     }
@@ -80,21 +78,14 @@ impl TerminalUI {
             if let Some(rx) = &mut self.rx {
                 // Check channel for updates
                 match rx.try_recv() {
-                    Ok((pools, eth_swaps, base_swaps, arb_swaps, token_info_map)) => {
+                    Ok((pool_info_map, eth_swaps, base_swaps, arb_swaps, token_info_map)) => {
                         // Update the UI with new pool data
-                        self.pools = pools;
-                        self.total_swaps = self.pools.iter().map(|p| p.swaps_tracked).sum();
+                        self.pool_info_map = pool_info_map;
+                        self.total_swaps = self.pool_info_map.values().map(|p| p.swaps_tracked).sum();
                         self.eth_swaps = eth_swaps;
                         self.base_swaps = base_swaps;
                         self.arb_swaps = arb_swaps;
                         self.token_info_map = token_info_map;
-
-
-
-                        self.pool_address_to_index.clear();
-                        for (index, pool) in self.pools.iter().enumerate() {
-                            self.pool_address_to_index.insert(pool.pool_address, index);
-                        }
                     }
                     Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
                         // No data available, that's fine
@@ -164,7 +155,7 @@ impl TerminalUI {
 
             // Move selection down
             KeyCode::Down | KeyCode::Char('j') => {
-                if self.selected_pool_index < self.pools.len().saturating_sub(1) {
+                if self.selected_pool_index < self.pool_info_map.len().saturating_sub(1) {
                     self.selected_pool_index += 1;
 
                     // Adjust scroll offset if the selected pool is below the visible range
@@ -187,7 +178,7 @@ impl TerminalUI {
             // Scroll a page down
             KeyCode::PageDown => {
                 let max_visible = 10; // Number of rows visible at a time
-                let max_scroll = self.pools.len().saturating_sub(max_visible);
+                let max_scroll = self.pool_info_map.len().saturating_sub(max_visible);
                 if self.scroll_offset < max_scroll {
                     self.scroll_offset = (self.scroll_offset + max_visible).min(max_scroll);
                     self.selected_pool_index = self.scroll_offset;
@@ -200,7 +191,7 @@ impl TerminalUI {
             }
             KeyCode::End => {
                 // Scroll to the bottom
-                self.scroll_offset = self.pools.len().saturating_sub(1);
+                self.scroll_offset = self.pool_info_map.len().saturating_sub(1);
             }
 
 
@@ -216,20 +207,19 @@ impl TerminalUI {
         self.exit
     }
 
-    pub fn with_receiver(rx: Receiver<(Vec<PoolInfo>, usize, usize, usize, HashMap<Address, TokenInfo>)>) -> Self {
+    pub fn with_receiver(rx: Receiver<(HashMap<(String, Address), PoolInfo>, usize, usize, usize, HashMap<Address, TokenInfo>)>) -> Self {
         Self {
             exit: false,
-            pools: Vec::new(),
             total_swaps: 0,
             rx: Some(rx),
             scroll_offset: 0,
             selected_pool_index: 0,
-            pool_address_to_index: HashMap::new(),
             paused: false,
             eth_swaps: 0,
             base_swaps: 0,
             arb_swaps: 0,
             show_prices: false,
+            pool_info_map: HashMap::new(),
             token_info_map: HashMap::new(),
         }
     }
@@ -270,7 +260,7 @@ impl Widget for &TerminalUI {
         let inner_area = block.inner(area);
 
         // Create header with total stats
-        let header = format!(" Pools Tracked: {} | Swaps Tracked: {} | Tokens Tracked: {} | ETH Swaps: {} | BASE Swaps: {} | ARB Swaps: {} ", self.pools.len(), self.total_swaps, self.token_info_map.len(), self.eth_swaps, self.base_swaps, self.arb_swaps);
+        let header = format!(" Pools Tracked: {} | Swaps Tracked: {} | Tokens Tracked: {} | ETH Swaps: {} | BASE Swaps: {} | ARB Swaps: {} ", self.pool_info_map.len(), self.total_swaps, self.token_info_map.len(), self.eth_swaps, self.base_swaps, self.arb_swaps);
         let header_text = Text::from(header);
 
         // Render header
@@ -294,11 +284,10 @@ impl Widget for &TerminalUI {
         let pools_area = panes[0];
         let right_area = panes[1];
 
-        // Render Pools block
-        let mut sorted_pools = self.pools.clone();
+        let mut sorted_pools: Vec<PoolInfo> = self.pool_info_map.values().cloned().collect();
         sorted_pools.sort_by(|a, b| b.swaps_tracked.cmp(&a.swaps_tracked));
 
-        let pool_count = self.pools.len();
+        let pool_count = sorted_pools.len();
         let max_visible = pools_area.height as usize;
         let start_idx: usize = if pool_count <= max_visible {
             0
@@ -505,16 +494,20 @@ impl Widget for &TerminalUI {
             // Render swaps for the selected pool
             if let Some(selected_pool) = sorted_pools.get(self.selected_pool_index) {
                 // Use the pool address to find the correct index in the original list
-                if let Some(&original_index) = self.pool_address_to_index.get(&selected_pool.pool_address) {
-                    let pool = &self.pools[original_index]; // Get the correct pool from the original list
+                let key = (selected_pool.network.clone(), selected_pool.pool_address.clone());
+                if let Some(pool) = self.pool_info_map.get(&key) {
                     let swap_store = &pool.swap_store; // Retrieve the swap events
 
                     let headers = Row::new(vec![
                         Cell::from("Timestamp"),
                         Cell::from(format!("Amount of {}", pool.get_token0_symbol())),
-                        Cell::from(format!("Amount of {}", pool.get_token1_symbol()))
+                        Cell::from(format!("Amount of {}", pool.get_token1_symbol())),
                     ])
-                    .style(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD));
+                    .style(
+                        ratatui::style::Style::default()
+                            .fg(ratatui::style::Color::Cyan)
+                            .add_modifier(ratatui::style::Modifier::BOLD),
+                    );
 
                     // If there are no swaps, display an empty row
                     let rows: Vec<Row> = if swap_store.is_empty() {
@@ -524,13 +517,17 @@ impl Widget for &TerminalUI {
                             Cell::from(""),
                         ])]
                     } else {
-                        swap_store.iter().rev().map(|(amount0, amount1, timestamp)| {
-                            Row::new(vec![
-                                Cell::from(format!("{}", timestamp)), // Timestamp
-                                Cell::from(format!("{}", amount0)), // Amount0
-                                Cell::from(format!("{}", amount1)), // Amount1
-                            ])
-                        }).collect()
+                        swap_store
+                            .iter()
+                            .rev()
+                            .map(|(amount0, amount1, timestamp)| {
+                                Row::new(vec![
+                                    Cell::from(format!("{}", timestamp)), // Timestamp
+                                    Cell::from(format!("{}", amount0)),  // Amount0
+                                    Cell::from(format!("{}", amount1)),  // Amount1
+                                ])
+                            })
+                            .collect()
                     };
 
                     let swaps_table = Table::new(
@@ -550,6 +547,7 @@ impl Widget for &TerminalUI {
 
                     swaps_table.render(right_area, buf);
                 }
+                
             } else {
                 // If no pools are available, render an empty swaps table
                 let headers = Row::new(vec![

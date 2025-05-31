@@ -22,8 +22,7 @@ pub async fn process_swap_event<P: Provider + Clone> (
     provider: P,
     network: &str,
     token_info_map: &mut HashMap<Address, TokenInfo>,
-    pool_address_to_index: &mut HashMap<(String, Address), u16>,
-    pool_storage: &mut Vec<PoolInfo>,
+    pool_info_map: &mut HashMap<(String, Address), PoolInfo>,
     api_key: &str,
 ) -> Result<()> {
     let data_bytes = &log.data().data;  // Access the bytes field directly
@@ -110,16 +109,17 @@ pub async fn process_swap_event<P: Provider + Clone> (
 
     let key = (network.to_string(), pool_address);
     // add structs to pool storage (new pool)
-    if !pool_address_to_index.contains_key(&key) {
-        process_new_pool(key.clone(), pool_address, token0_address, token1_address, contract, swap_event, token_info_map, pool_address_to_index, pool_storage,amount0, amount1, sqrt_price_x96, liquidity, tick, timestamp).await?;
+    if !pool_info_map.contains_key(&key) {
+        process_new_pool(network, key.clone(), pool_address, token0_address, token1_address, contract, swap_event, token_info_map, pool_info_map, amount0, amount1, sqrt_price_x96, liquidity, tick, timestamp).await?;
     } else {
-        update_existing_pool(key.clone(), pool_address, pool_address_to_index, pool_storage, amount0, amount1, sqrt_price_x96, liquidity, tick, swap_event, timestamp)?;
+        update_existing_pool(key.clone(), pool_address, pool_info_map, amount0, amount1, sqrt_price_x96, liquidity, tick, swap_event, timestamp)?;
     }
 
     Ok(())
 }
 
 async fn process_new_pool<P: Provider + Clone>(
+    network: &str,
     key: (String, Address),
     pool_address: Address,
     token0_address: Address,
@@ -127,8 +127,7 @@ async fn process_new_pool<P: Provider + Clone>(
     contract: IUniswapV3PoolInstance<P>,
     swap: Swap,
     token_info_map: &mut HashMap<Address, TokenInfo>,
-    pool_address_to_index: &mut HashMap<(String, Address), u16>,
-    pool_storage: &mut Vec<PoolInfo>,
+    pool_info_map: &mut HashMap<(String, Address), PoolInfo>,
     amount0: i128,
     amount1: i128,
     sqrt_price_x96: U160,
@@ -159,13 +158,8 @@ async fn process_new_pool<P: Provider + Clone>(
     let readable_amount1 = make_amount_readable(amount1, token1_decimals);
     let swap_store = vec![(readable_amount0, readable_amount1, timestamp)];
 
-    let new_pool = PoolInfo::new(pool_address, token0_address, token1_address, token_info_map.get(&token0_address).unwrap().clone(), token_info_map.get(&token1_address).unwrap().clone(), 1, fee, current_price, 0.0, liquidity, tick_range, apr, volume, swap_store);
-    pool_storage.push(new_pool);
-
-    pool_address_to_index.insert(
-        key,
-        u16::try_from(pool_storage.len() - 1).expect("pool_storage length exceeds u16::MAX"),
-    );
+    let new_pool = PoolInfo::new(network.to_string(), pool_address, token0_address, token1_address, token_info_map.get(&token0_address).unwrap().clone(), token_info_map.get(&token1_address).unwrap().clone(), 1, fee, current_price, 0.0, liquidity, tick_range, apr, volume, swap_store);
+    pool_info_map.insert(key, new_pool);
 
     Ok(())
 }
@@ -173,8 +167,7 @@ async fn process_new_pool<P: Provider + Clone>(
 fn update_existing_pool(
     key: (String, Address),
     pool_address: Address,
-    pool_address_to_index: &mut HashMap<(String, Address), u16>,
-    pool_storage: &mut Vec<PoolInfo>,
+    pool_info_map: &mut HashMap<(String, Address), PoolInfo>,
     amount0: i128,
     amount1: i128,
     sqrt_price_x96: U160,
@@ -183,8 +176,7 @@ fn update_existing_pool(
     swap: Swap,
     timestamp: String,
 ) -> Result<()> {
-    if let Some(&index) = pool_address_to_index.get(&key) {
-        let pool = &mut pool_storage[index as usize];
+    if let Some(pool) = pool_info_map.get_mut(&key) {
 
         pool.increment_swap_count();
 

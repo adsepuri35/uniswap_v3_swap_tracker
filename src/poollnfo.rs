@@ -5,6 +5,7 @@ use crate::tokenInfo::TokenInfo;
 
 #[derive(Debug, Clone)]
 pub struct PoolInfo {
+    pub network: String,
     pub pool_address: Address,
     pub pool_name: String,
     pub token0: Address,
@@ -24,6 +25,7 @@ pub struct PoolInfo {
 
 impl PoolInfo {
     pub fn new(
+        network: String,
         pool_address: Address,
         token0: Address,
         token1: Address,
@@ -52,6 +54,7 @@ impl PoolInfo {
         };
 
         PoolInfo {
+            network,
             pool_address,
             pool_name,
             token0,

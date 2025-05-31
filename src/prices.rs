@@ -74,14 +74,6 @@ pub async fn get_token_price(
 
     // Log the response body for debugging
     let body_text = response.text().await?;
-    // let file_result = OpenOptions::new()
-    //     .create(true)
-    //     .append(true)
-    //     .open("response_log.txt");
-
-    // if let Ok(mut file) = file_result {
-    //     writeln!(file, "Response body: {}", body_text).ok();
-    // }
 
     // Deserialize the response
     let price_response: TokenPriceResponse = serde_json::from_str(&body_text)?;

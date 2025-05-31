@@ -1,4 +1,4 @@
-use std::io::{self, Write};
+use std::{io::{self, Write}, ops::Add};
 use alloy::{core::primitives::Address, network::Ethereum, providers::{self, Provider, ProviderBuilder, WsConnect}, rpc::types::{Filter, Topic}, sol_types::SolEvent};
 use anyhow::Result;
 use dotenv::dotenv;
@@ -27,7 +27,7 @@ struct TokenPriceResponse {
 }
 
 
-pub async fn run_ws_backend(tx: mpsc::Sender<(Vec<PoolInfo>, usize, usize, usize, HashMap<Address, TokenInfo>)>) -> Result<()> {
+pub async fn run_ws_backend(tx: mpsc::Sender<(HashMap<(String, Address), PoolInfo>, usize, usize, usize, HashMap<Address, TokenInfo>)>) -> Result<()> {
     // load env variables
     dotenv().ok();
     
@@ -109,8 +109,10 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(Vec<PoolInfo>, usize, usize, usize
 
 
     let mut token_info_map: HashMap<Address, TokenInfo> = HashMap::new();
-    let mut pool_address_to_index: HashMap<(String, Address), u16> = HashMap::new();
-    let mut pool_storage: Vec<PoolInfo> = Vec::new();
+    // let mut pool_address_to_index: HashMap<(String, Address), u16> = HashMap::new();
+    // let mut pool_storage: Vec<PoolInfo> = Vec::new();
+
+    let mut pool_info_map: HashMap<(String, Address), PoolInfo> = HashMap::new();
 
     let mut eth_swaps = 0;
     let mut base_swaps = 0;
@@ -149,13 +151,12 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(Vec<PoolInfo>, usize, usize, usize
                 provider,
                 network,  
                 &mut token_info_map,
-                &mut pool_address_to_index,
-                &mut pool_storage,
+                &mut pool_info_map,
                 &api_key
             ).await {
                 Ok(_) => {
                     // Only send on success
-                    tx.send((pool_storage.clone(), eth_swaps, base_swaps, arb_swaps, token_info_map.clone())).await?;
+                    tx.send((pool_info_map.clone(), eth_swaps, base_swaps, arb_swaps, token_info_map.clone())).await?;
                 },
                 Err(e) => {
                     let file_result = OpenOptions::new()

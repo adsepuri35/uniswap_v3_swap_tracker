@@ -25,7 +25,7 @@ use tokenInfo::TokenInfo;
 #[tokio::main]
 async fn main() -> Result<()> {
 
-    let (tx, rx) = mpsc::channel::<(Vec<PoolInfo>, usize, usize, usize, HashMap<Address, TokenInfo>)>(100);
+    let (tx, rx) = mpsc::channel::<(HashMap<(String, Address), PoolInfo>, usize, usize, usize, HashMap<Address, TokenInfo>)>(100);
     
     // Start the backend in a separate task
     let backend_handle = tokio::spawn(async move {
