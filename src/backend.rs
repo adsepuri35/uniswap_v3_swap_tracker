@@ -17,6 +17,7 @@ use crate::poollnfo::PoolInfo;
 use crate::swap_processor::process_swap_event;
 use crate::tokenInfo::TokenInfo;
 use crate::prices::get_token_price;
+use crate::backendUpdate::BackendUpdate;
 
 use reqwest::Client;
 use serde::Deserialize;
@@ -27,7 +28,7 @@ struct TokenPriceResponse {
 }
 
 
-pub async fn run_ws_backend(tx: mpsc::Sender<(HashMap<(String, Address), PoolInfo>, usize, usize, usize, HashMap<Address, TokenInfo>)>) -> Result<()> {
+pub async fn run_ws_backend(tx: mpsc::Sender<(BackendUpdate)>) -> Result<()> {
     // load env variables
     dotenv().ok();
     
@@ -145,7 +146,6 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(HashMap<(String, Address), PoolInf
 
             let pool_address = log.address();
 
-
             match process_swap_event(
                 &log,
                 provider,
@@ -154,9 +154,19 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(HashMap<(String, Address), PoolInf
                 &mut pool_info_map,
                 &api_key
             ).await {
-                Ok(_) => {
+                Ok((Some(updated_pool), Some(updated_token))) => {
                     // Only send on success
-                    tx.send((pool_info_map.clone(), eth_swaps, base_swaps, arb_swaps, token_info_map.clone())).await?;
+                    tx.send(BackendUpdate::PoolUpdated(updated_pool)).await?;
+                    tx.send(BackendUpdate::TokenUpdated(updated_token)).await?;
+                },
+                Ok((Some(updated_pool), None)) => {
+                    tx.send(BackendUpdate::PoolUpdated(updated_pool)).await?;
+                },
+                Ok((None, Some(updated_token))) => {
+                    tx.send(BackendUpdate::TokenUpdated(updated_token)).await?;
+                },
+                Ok((None, None)) => {
+                    // do no
                 },
                 Err(e) => {
                     let file_result = OpenOptions::new()
@@ -177,6 +187,12 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(HashMap<(String, Address), PoolInf
                     }
                 }
             }
+
+            tx.send(BackendUpdate::ChainStats {
+                eth_swaps,
+                base_swaps,
+                arb_swaps,
+            }).await?;
         }
     }
 

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use backendUpdate::BackendUpdate;
 // use reqwest::Client;
 use tokio::sync::mpsc;
 use std::collections::HashMap;
@@ -18,14 +19,12 @@ mod backend;
 mod tokenInfo;
 mod prices;
 use tokenInfo::TokenInfo;
-
-
-// const BLOCKS_TO_TRACK: u64 = 1;
+mod backendUpdate;
 
 #[tokio::main]
 async fn main() -> Result<()> {
 
-    let (tx, rx) = mpsc::channel::<(HashMap<(String, Address), PoolInfo>, usize, usize, usize, HashMap<Address, TokenInfo>)>(100);
+    let (tx, rx) = mpsc::channel::<(BackendUpdate)>(100);
     
     // Start the backend in a separate task
     let backend_handle = tokio::spawn(async move {

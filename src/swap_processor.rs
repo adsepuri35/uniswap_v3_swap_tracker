@@ -3,7 +3,7 @@ use alloy::{core::primitives::{Address, U160, U256}, providers::{Provider}};
 use anyhow::Result;
 use serde_json::error;
 use std::{collections::HashMap};
-use amms::amms::uniswap_v3::{IUniswapV3Pool::IUniswapV3PoolInstance, IUniswapV3PoolEvents::Swap};
+use amms::amms::{uniswap_v3::{IUniswapV3Pool::IUniswapV3PoolInstance, IUniswapV3PoolEvents::Swap}, Token};
 // use reqwest::Client;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -24,7 +24,7 @@ pub async fn process_swap_event<P: Provider + Clone> (
     token_info_map: &mut HashMap<Address, TokenInfo>,
     pool_info_map: &mut HashMap<(String, Address), PoolInfo>,
     api_key: &str,
-) -> Result<()> {
+) -> Result<(Option<PoolInfo>, Option<TokenInfo>)> {
     let data_bytes = &log.data().data;  // Access the bytes field directly
     
     if data_bytes.len() < 128 {  // Check length on bytes
@@ -64,6 +64,9 @@ pub async fn process_swap_event<P: Provider + Clone> (
         }
     };
 
+
+    let mut updated_token = None;
+
     // acquire token addresses + symbols
     let token0_address = contract.token0().call().await?;
     let token1_address = contract.token1().call().await?;
@@ -73,16 +76,17 @@ pub async fn process_swap_event<P: Provider + Clone> (
         let ierc20_token0 = IERC20::new(token0_address, provider.clone());
         let token0_symbol = ierc20_token0.symbol().call().await?;
         let token0_decimal = ierc20_token0.decimals().call().await?;
-        token_info_map.insert(
-            token0_address,
-            TokenInfo {
-                address: token0_address,
-                symbol: token0_symbol,
-                decimals: token0_decimal,
-                value: Some(token_price_value),
-                last_updated: String::new(), // Add timestamp if needed
-            },
-        );
+
+        let new_token = TokenInfo {
+            address: token0_address,
+            symbol: token0_symbol,
+            decimals: token0_decimal,
+            value: Some(token_price_value),
+            last_updated: String::new(),
+        };
+
+        token_info_map.insert(token0_address, new_token.clone());
+        updated_token = Some(new_token);
     }
 
     // Fetch token1 price if not already in the map
@@ -92,30 +96,32 @@ pub async fn process_swap_event<P: Provider + Clone> (
         let ierc20_token1 = IERC20::new(token1_address, provider.clone());
         let token1_symbol = ierc20_token1.symbol().call().await?;
         let token1_decimal = ierc20_token1.decimals().call().await?;
-        token_info_map.insert(
-            token1_address,
-            TokenInfo {
-                address: token1_address,
-                symbol: token1_symbol,
-                decimals: token1_decimal,
-                value: Some(token_price_value),
-                last_updated: String::new(), // Add timestamp if needed
-            },
-        );
-    }
 
-    // update token price here
+        let new_token = TokenInfo {
+            address: token1_address,
+            symbol: token1_symbol,
+            decimals: token1_decimal,
+            value: Some(token_price_value),
+            last_updated: String::new(),
+        };
+        token_info_map.insert(token1_address, new_token.clone());
+        updated_token = Some(new_token);
+    }
 
 
     let key = (network.to_string(), pool_address);
+    let mut updated_pool = None;
+
     // add structs to pool storage (new pool)
     if !pool_info_map.contains_key(&key) {
-        process_new_pool(network, key.clone(), pool_address, token0_address, token1_address, contract, swap_event, token_info_map, pool_info_map, amount0, amount1, sqrt_price_x96, liquidity, tick, timestamp).await?;
+        let new_pool = process_new_pool(network, key.clone(), pool_address, token0_address, token1_address, contract, swap_event, token_info_map, pool_info_map, amount0, amount1, sqrt_price_x96, liquidity, tick, timestamp).await?;
+        updated_pool = Some(new_pool);
     } else {
-        update_existing_pool(key.clone(), pool_address, pool_info_map, amount0, amount1, sqrt_price_x96, liquidity, tick, swap_event, timestamp)?;
+        let updated = update_existing_pool(key.clone(), pool_address, pool_info_map, amount0, amount1, sqrt_price_x96, liquidity, tick, swap_event, timestamp)?;
+        updated_pool = Some(updated);
     }
 
-    Ok(())
+    Ok((updated_pool, updated_token))
 }
 
 async fn process_new_pool<P: Provider + Clone>(
@@ -134,7 +140,7 @@ async fn process_new_pool<P: Provider + Clone>(
     liquidity: u128,
     tick: i32,
     timestamp: String,
-) -> Result<()> {
+) -> Result<(PoolInfo)> {
     
     
     let fee_uint = contract.fee().call().await?;
@@ -159,9 +165,9 @@ async fn process_new_pool<P: Provider + Clone>(
     let swap_store = vec![(readable_amount0, readable_amount1, timestamp)];
 
     let new_pool = PoolInfo::new(network.to_string(), pool_address, token0_address, token1_address, token_info_map.get(&token0_address).unwrap().clone(), token_info_map.get(&token1_address).unwrap().clone(), 1, fee, current_price, 0.0, liquidity, tick_range, apr, volume, swap_store);
-    pool_info_map.insert(key, new_pool);
+    pool_info_map.insert(key, new_pool.clone());
 
-    Ok(())
+    Ok(new_pool)
 }
 
 fn update_existing_pool(
@@ -175,7 +181,7 @@ fn update_existing_pool(
     tick: i32,
     swap: Swap,
     timestamp: String,
-) -> Result<()> {
+) -> Result<PoolInfo> {
     if let Some(pool) = pool_info_map.get_mut(&key) {
 
         pool.increment_swap_count();
@@ -200,11 +206,13 @@ fn update_existing_pool(
         let readable_amount1 = make_amount_readable(amount1, token1_decimals);
         pool.add_swap_store(readable_amount0, readable_amount1, timestamp);
 
+        return Ok(pool.clone())
+
     } else {
         println!("Error: Pool found in HashMap but no index available");
     }
 
-    Ok(())
+    Err(anyhow::anyhow!("Failed to update pool"))
 }
 
 

@@ -20,12 +20,13 @@ use alloy::core::primitives::Address;
 //file imports
 use crate::poollnfo::PoolInfo;
 use crate::tokenInfo::TokenInfo;
+use crate::backendUpdate::BackendUpdate;
 
 #[derive(Debug)]
 pub struct TerminalUI   {
     exit: bool,
     total_swaps: usize,
-    rx: Option<Receiver<(HashMap<(String, Address), PoolInfo>, usize, usize, usize, HashMap<Address, TokenInfo>)>>,
+    rx: Option<Receiver<(BackendUpdate)>>,
     scroll_offset: usize,
     selected_pool_index: usize,
     paused: bool,
@@ -78,14 +79,23 @@ impl TerminalUI {
             if let Some(rx) = &mut self.rx {
                 // Check channel for updates
                 match rx.try_recv() {
-                    Ok((pool_info_map, eth_swaps, base_swaps, arb_swaps, token_info_map)) => {
-                        // Update the UI with new pool data
-                        self.pool_info_map = pool_info_map;
-                        self.total_swaps = self.pool_info_map.values().map(|p| p.swaps_tracked).sum();
-                        self.eth_swaps = eth_swaps;
-                        self.base_swaps = base_swaps;
-                        self.arb_swaps = arb_swaps;
-                        self.token_info_map = token_info_map;
+                    Ok((backend_update)) => {
+                        match backend_update {
+                            BackendUpdate::PoolUpdated(pool) => {
+                                let key = (pool.network.clone(), pool.pool_address);
+                                self.pool_info_map.insert(key, pool);
+
+                                self.total_swaps = self.pool_info_map.values().map(|p| p.swaps_tracked).sum();
+                            }
+                            BackendUpdate::TokenUpdated(token) => {
+                                self.token_info_map.insert(token.address, token);
+                            }
+                            BackendUpdate::ChainStats { eth_swaps, base_swaps, arb_swaps } => {
+                                self.eth_swaps = eth_swaps;
+                                self.base_swaps = base_swaps;
+                                self.arb_swaps = arb_swaps;
+                            }
+                        }
                     }
                     Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
                         // No data available, that's fine
@@ -207,7 +217,7 @@ impl TerminalUI {
         self.exit
     }
 
-    pub fn with_receiver(rx: Receiver<(HashMap<(String, Address), PoolInfo>, usize, usize, usize, HashMap<Address, TokenInfo>)>) -> Self {
+    pub fn with_receiver(rx: Receiver<(BackendUpdate)>) -> Self {
         Self {
             exit: false,
             total_swaps: 0,
