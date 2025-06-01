@@ -110,10 +110,8 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(BackendUpdate)>) -> Result<()> {
 
 
     let mut token_info_map: HashMap<Address, TokenInfo> = HashMap::new();
-    // let mut pool_address_to_index: HashMap<(String, Address), u16> = HashMap::new();
-    // let mut pool_storage: Vec<PoolInfo> = Vec::new();
 
-    let mut pool_info_map: HashMap<(String, Address), PoolInfo> = HashMap::new();
+    let mut pool_info_map: HashMap<Address, PoolInfo> = HashMap::new();
 
     let mut eth_swaps = 0;
     let mut base_swaps = 0;

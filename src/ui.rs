@@ -34,7 +34,7 @@ pub struct TerminalUI   {
     base_swaps: usize,
     arb_swaps: usize,
     show_prices: bool,
-    pool_info_map: HashMap<(String, Address), PoolInfo>,
+    pool_info_map: HashMap<Address, PoolInfo>,
     token_info_map: HashMap<Address, TokenInfo>,
 }
 
@@ -82,8 +82,7 @@ impl TerminalUI {
                     Ok((backend_update)) => {
                         match backend_update {
                             BackendUpdate::PoolUpdated(pool) => {
-                                let key = (pool.network.clone(), pool.pool_address);
-                                self.pool_info_map.insert(key, pool);
+                                self.pool_info_map.insert(pool.pool_address, pool);
 
                                 self.total_swaps = self.pool_info_map.values().map(|p| p.swaps_tracked).sum();
                             }
@@ -311,7 +310,7 @@ impl Widget for &TerminalUI {
         let headers = Row::new(vec![
             Cell::from("ID"),
             Cell::from("Pool Name"),
-            Cell::from("Protocol"),
+            Cell::from("Chain"),
             Cell::from("Fee"),
             Cell::from("Swaps"),
             Cell::from("Price"),
@@ -424,7 +423,7 @@ impl Widget for &TerminalUI {
             Row::new(vec![
                 Cell::from(format!("{}", start_idx + i +  1)).style(style), // Index
                 Cell::from(pool.pool_name.to_string()).style(style), // Pool Name
-                Cell::from("v3").style(style),
+                Cell::from(pool.networks.join(", ")).style(style), // Networks
                 Cell::from(format!("{:.2}%", pool.get_fee_percent())).style(style), // Fee
                 Cell::from(format!("{}", pool.swaps_tracked)).style(style), // Swaps
                 price_display, // Price
@@ -504,7 +503,7 @@ impl Widget for &TerminalUI {
             // Render swaps for the selected pool
             if let Some(selected_pool) = sorted_pools.get(self.selected_pool_index) {
                 // Use the pool address to find the correct index in the original list
-                let key = (selected_pool.network.clone(), selected_pool.pool_address.clone());
+                let key = (selected_pool.pool_address.clone());
                 if let Some(pool) = self.pool_info_map.get(&key) {
                     let swap_store = &pool.swap_store; // Retrieve the swap events
 

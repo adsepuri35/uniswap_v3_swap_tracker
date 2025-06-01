@@ -22,7 +22,7 @@ pub async fn process_swap_event<P: Provider + Clone> (
     provider: P,
     network: &str,
     token_info_map: &mut HashMap<Address, TokenInfo>,
-    pool_info_map: &mut HashMap<(String, Address), PoolInfo>,
+    pool_info_map: &mut HashMap<Address, PoolInfo>,
     api_key: &str,
 ) -> Result<(Option<PoolInfo>, Option<TokenInfo>)> {
     let data_bytes = &log.data().data;  // Access the bytes field directly
@@ -109,15 +109,14 @@ pub async fn process_swap_event<P: Provider + Clone> (
     }
 
 
-    let key = (network.to_string(), pool_address);
     let mut updated_pool = None;
 
     // add structs to pool storage (new pool)
-    if !pool_info_map.contains_key(&key) {
-        let new_pool = process_new_pool(network, key.clone(), pool_address, token0_address, token1_address, contract, swap_event, token_info_map, pool_info_map, amount0, amount1, sqrt_price_x96, liquidity, tick, timestamp).await?;
+    if !pool_info_map.contains_key(&pool_address) {
+        let new_pool = process_new_pool(network, pool_address, token0_address, token1_address, contract, swap_event, token_info_map, pool_info_map, amount0, amount1, sqrt_price_x96, liquidity, tick, timestamp).await?;
         updated_pool = Some(new_pool);
     } else {
-        let updated = update_existing_pool(key.clone(), pool_address, pool_info_map, amount0, amount1, sqrt_price_x96, liquidity, tick, swap_event, timestamp)?;
+        let updated = update_existing_pool(network, pool_address, pool_info_map, amount0, amount1, sqrt_price_x96, liquidity, tick, swap_event, timestamp)?;
         updated_pool = Some(updated);
     }
 
@@ -126,14 +125,13 @@ pub async fn process_swap_event<P: Provider + Clone> (
 
 async fn process_new_pool<P: Provider + Clone>(
     network: &str,
-    key: (String, Address),
     pool_address: Address,
     token0_address: Address,
     token1_address: Address,
     contract: IUniswapV3PoolInstance<P>,
     swap: Swap,
     token_info_map: &mut HashMap<Address, TokenInfo>,
-    pool_info_map: &mut HashMap<(String, Address), PoolInfo>,
+    pool_info_map: &mut HashMap<Address, PoolInfo>,
     amount0: i128,
     amount1: i128,
     sqrt_price_x96: U160,
@@ -164,16 +162,17 @@ async fn process_new_pool<P: Provider + Clone>(
     let readable_amount1 = make_amount_readable(amount1, token1_decimals);
     let swap_store = vec![(readable_amount0, readable_amount1, timestamp)];
 
-    let new_pool = PoolInfo::new(network.to_string(), pool_address, token0_address, token1_address, token_info_map.get(&token0_address).unwrap().clone(), token_info_map.get(&token1_address).unwrap().clone(), 1, fee, current_price, 0.0, liquidity, tick_range, apr, volume, swap_store);
-    pool_info_map.insert(key, new_pool.clone());
+    let simplified_network = simplify_network_name(network);
+    let new_pool = PoolInfo::new(simplified_network.to_string(), pool_address, token0_address, token1_address, token_info_map.get(&token0_address).unwrap().clone(), token_info_map.get(&token1_address).unwrap().clone(), 1, fee, current_price, 0.0, liquidity, tick_range, apr, volume, swap_store);
+    pool_info_map.insert(pool_address, new_pool.clone());
 
     Ok(new_pool)
 }
 
 fn update_existing_pool(
-    key: (String, Address),
+    network: &str,
     pool_address: Address,
-    pool_info_map: &mut HashMap<(String, Address), PoolInfo>,
+    pool_info_map: &mut HashMap<Address, PoolInfo>,
     amount0: i128,
     amount1: i128,
     sqrt_price_x96: U160,
@@ -182,9 +181,14 @@ fn update_existing_pool(
     swap: Swap,
     timestamp: String,
 ) -> Result<PoolInfo> {
-    if let Some(pool) = pool_info_map.get_mut(&key) {
+    if let Some(pool) = pool_info_map.get_mut(&pool_address) {
 
         pool.increment_swap_count();
+
+        let simplified_network = simplify_network_name(network);
+        if !pool.networks.contains(&simplified_network.to_string()) {
+            pool.networks.push(simplified_network.to_string());
+        }
 
         // update price
         let token0_decimals = pool.get_token0_decimals();
@@ -302,4 +306,13 @@ pub fn calculate_apr(fee: u32, swaps_tracked: usize, liquidity: u128) -> f64 {
 pub fn make_amount_readable(amount: i128, decimals: u8) -> f64 {
     let divisor = 10f64.powi(decimals as i32);
     amount as f64 / divisor
+}
+
+pub fn simplify_network_name(network: &str) -> &str {
+    match network {
+        "eth-mainnet" => "eth",
+        "base-mainnet" => "base",
+        "arb-mainnet" => "arb",
+        _ => network, // Fallback to the original name if no match
+    }
 }
