@@ -1,7 +1,9 @@
 use alloy::core::primitives::Address;
-use serde::{Deserialize, Serialize};
-use reqwest::Client;
 use anyhow::Result;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+
+use crate::backend::AlchemyNetwork;
 
 #[derive(Serialize, Debug)]
 struct TokenPriceRequest {
@@ -10,7 +12,7 @@ struct TokenPriceRequest {
 
 #[derive(Serialize, Debug)]
 struct TokenAddress {
-    network: String,
+    network: AlchemyNetwork,
     address: String,
 }
 
@@ -39,14 +41,16 @@ struct TokenPrice {
     lastUpdatedAt: String,
 }
 
-
 // pass in network and token address
 pub async fn get_token_price(
-    network: String,
+    network: AlchemyNetwork,
     token_address: Address,
     api_key: &str,
 ) -> Result<Option<String>> {
-    let price_url = format!("https://api.g.alchemy.com/prices/v1/{}/tokens/by-address", api_key);
+    let price_url = format!(
+        "https://api.g.alchemy.com/prices/v1/{}/tokens/by-address",
+        api_key
+    );
 
     let request_body = TokenPriceRequest {
         addresses: vec![TokenAddress {
@@ -57,11 +61,7 @@ pub async fn get_token_price(
 
     let client = Client::new();
 
-    let response = client
-        .post(&price_url)
-        .json(&request_body)
-        .send()
-        .await?;
+    let response = client.post(&price_url).json(&request_body).send().await?;
 
     if !response.status().is_success() {
         println!("Failed to fetch token price: {}", response.status());

@@ -1,43 +1,45 @@
-
-use alloy::{core::primitives::{Address, U160, U256}, providers::{Provider}};
+use alloy::{
+    core::primitives::{Address, U160, U256},
+    providers::Provider,
+};
+use amms::amms::uniswap_v3::{IUniswapV3Pool::IUniswapV3PoolInstance, IUniswapV3PoolEvents::Swap};
 use anyhow::Result;
-use std::{collections::HashMap};
-use amms::amms::{uniswap_v3::{IUniswapV3Pool::IUniswapV3PoolInstance, IUniswapV3PoolEvents::Swap}};
+use chrono::Local;
+use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::str::FromStr;
-use chrono::Local;
 
 // other file imports
-use crate::ierc20::IERC20;
 use crate::pool_info::PoolInfo;
-use crate::token_info::TokenInfo;
 use crate::prices::get_token_price;
+use crate::token_info::TokenInfo;
+use crate::{backend::AlchemyNetwork, ierc20::IERC20};
 
-pub async fn process_swap_event<P: Provider + Clone> (
+pub async fn process_swap_event<P: Provider + Clone>(
     log: &alloy::rpc::types::Log,
     provider: P,
-    network: &str,
+    network: AlchemyNetwork,
     token_info_map: &mut HashMap<Address, TokenInfo>,
     pool_info_map: &mut HashMap<Address, PoolInfo>,
     api_key: &str,
 ) -> Result<(Option<PoolInfo>, Option<TokenInfo>, Option<TokenInfo>)> {
     let data_bytes = &log.data().data;
-    
+
     if data_bytes.len() < 128 {
-        return Err(anyhow::anyhow!("Swap event data too short: {}", data_bytes.len()));
+        return Err(anyhow::anyhow!(
+            "Swap event data too short: {}",
+            data_bytes.len()
+        ));
     }
-    
+
     let pool_address = log.address();
 
     let contract = IUniswapV3PoolInstance::new(pool_address, provider.clone());
 
     let swap_event_log = match log.log_decode::<Swap>() {
-        Ok(event) => {
-            event
-        },
+        Ok(event) => event,
         Err(error) => {
-
             panic!("{}", error);
         }
     };
@@ -53,11 +55,13 @@ pub async fn process_swap_event<P: Provider + Clone> (
         Ok(t) => t,
         Err(_) => {
             // log issue
-            println!("Warning: Missing tick in swap event for pool {}", pool_address);
+            println!(
+                "Warning: Missing tick in swap event for pool {}",
+                pool_address
+            );
             0 //default tick -> 1.0001^0 = 1.0
         }
     };
-
 
     let mut updated_token0 = None;
     let mut updated_token1 = None;
@@ -66,7 +70,7 @@ pub async fn process_swap_event<P: Provider + Clone> (
     let token0_address = contract.token0().call().await?;
     let token1_address = contract.token1().call().await?;
     if !token_info_map.contains_key(&token0_address) {
-        let token_price = get_token_price(network.to_string(), token0_address, api_key).await?;
+        let token_price = get_token_price(network.clone(), token0_address, api_key).await?;
         let token_price_value = token_price.unwrap_or("Unknown".to_string());
         let ierc20_token0 = IERC20::new(token0_address, provider.clone());
         let token0_symbol = ierc20_token0.symbol().call().await?;
@@ -84,7 +88,7 @@ pub async fn process_swap_event<P: Provider + Clone> (
         token_info_map.insert(token0_address, new_token.clone());
         updated_token0 = Some(new_token);
     } else {
-        let curr_token_price = get_token_price(network.to_string(), token0_address, api_key).await?;
+        let curr_token_price = get_token_price(network.clone(), token0_address, api_key).await?;
         let curr_token_price_value = curr_token_price.unwrap_or("Unknown".to_string());
 
         if let Some(token_info) = token_info_map.get_mut(&token0_address) {
@@ -94,7 +98,7 @@ pub async fn process_swap_event<P: Provider + Clone> (
     }
 
     if !token_info_map.contains_key(&token1_address) {
-        let token_price = get_token_price(network.to_string(), token0_address, api_key).await?;
+        let token_price = get_token_price(network.clone(), token0_address, api_key).await?;
         let token_price_value = token_price.unwrap_or("Unknown".to_string()); // Provide a default value
         let ierc20_token1 = IERC20::new(token1_address, provider.clone());
         let token1_symbol = ierc20_token1.symbol().call().await?;
@@ -111,7 +115,7 @@ pub async fn process_swap_event<P: Provider + Clone> (
         token_info_map.insert(token1_address, new_token.clone());
         updated_token1 = Some(new_token);
     } else {
-        let curr_token_price = get_token_price(network.to_string(), token1_address, api_key).await?;
+        let curr_token_price = get_token_price(network.clone(), token1_address, api_key).await?;
         let curr_token_price_value = curr_token_price.unwrap_or("Unknown".to_string());
 
         if let Some(token_info) = token_info_map.get_mut(&token1_address) {
@@ -122,16 +126,42 @@ pub async fn process_swap_event<P: Provider + Clone> (
 
     //get updated pool
     let updated_pool = if !pool_info_map.contains_key(&pool_address) {
-        Some(process_new_pool(network, pool_address, token0_address, token1_address, contract, token_info_map, pool_info_map, amount0, amount1, sqrt_price_x96, liquidity, tick, timestamp,).await?,)
+        Some(
+            process_new_pool(
+                network,
+                pool_address,
+                token0_address,
+                token1_address,
+                contract,
+                token_info_map,
+                pool_info_map,
+                amount0,
+                amount1,
+                sqrt_price_x96,
+                liquidity,
+                tick,
+                timestamp,
+            )
+            .await?,
+        )
     } else {
-        Some(update_existing_pool(network, pool_address, pool_info_map, amount0, amount1, sqrt_price_x96, liquidity, timestamp,)?,)
+        Some(update_existing_pool(
+            network,
+            pool_address,
+            pool_info_map,
+            amount0,
+            amount1,
+            sqrt_price_x96,
+            liquidity,
+            timestamp,
+        )?)
     };
 
     Ok((updated_pool, updated_token0, updated_token1))
 }
 
 async fn process_new_pool<P: Provider + Clone>(
-    network: &str,
+    network: AlchemyNetwork,
     pool_address: Address,
     token0_address: Address,
     token1_address: Address,
@@ -145,15 +175,14 @@ async fn process_new_pool<P: Provider + Clone>(
     tick: i32,
     timestamp: String,
 ) -> Result<PoolInfo> {
-    
-    
     let fee_uint = contract.fee().call().await?;
     let fee = fee_uint.to::<u32>();
 
     // calculate current price for pool
     let token0_decimals = token_info_map.get(&token0_address).unwrap().decimals;
     let token1_decimals = token_info_map.get(&token1_address).unwrap().decimals;
-    let current_price = calculate_price_from_sqrt_price_x96(sqrt_price_x96, token0_decimals, token1_decimals);
+    let current_price =
+        calculate_price_from_sqrt_price_x96(sqrt_price_x96, token0_decimals, token1_decimals);
 
     let tick_spacing = contract.tickSpacing().call().await?.as_i32();
     let tick_range = calculate_tick_range(tick, tick_spacing);
@@ -163,20 +192,35 @@ async fn process_new_pool<P: Provider + Clone>(
     let amount1_scaled = amount1.abs() as f64 / 10f64.powi(token1_decimals as i32);
     let volume = amount0_scaled + amount1_scaled;
 
-
     let readable_amount0 = make_amount_readable(amount0, token0_decimals);
     let readable_amount1 = make_amount_readable(amount1, token1_decimals);
     let swap_store = vec![(readable_amount0, readable_amount1, timestamp)];
 
     let simplified_network = simplify_network_name(network);
-    let new_pool = PoolInfo::new(simplified_network.to_string(), pool_address, token0_address, token1_address, token_info_map.get(&token0_address).unwrap().clone(), token_info_map.get(&token1_address).unwrap().clone(), 1, fee, current_price, 0.0, liquidity, tick_range, apr, volume, swap_store);
+    let new_pool = PoolInfo::new(
+        simplified_network.to_string(),
+        pool_address,
+        token0_address,
+        token1_address,
+        token_info_map.get(&token0_address).unwrap().clone(),
+        token_info_map.get(&token1_address).unwrap().clone(),
+        1,
+        fee,
+        current_price,
+        0.0,
+        liquidity,
+        tick_range,
+        apr,
+        volume,
+        swap_store,
+    );
     pool_info_map.insert(pool_address, new_pool.clone());
 
     Ok(new_pool)
 }
 
 fn update_existing_pool(
-    network: &str,
+    network: AlchemyNetwork,
     pool_address: Address,
     pool_info_map: &mut HashMap<Address, PoolInfo>,
     amount0: i128,
@@ -186,7 +230,6 @@ fn update_existing_pool(
     timestamp: String,
 ) -> Result<PoolInfo> {
     if let Some(pool) = pool_info_map.get_mut(&pool_address) {
-
         pool.increment_swap_count();
 
         let simplified_network = simplify_network_name(network);
@@ -197,7 +240,8 @@ fn update_existing_pool(
         // update price
         let token0_decimals = pool.get_token0_decimals();
         let token1_decimals = pool.get_token1_decimals();
-        let new_price = calculate_price_from_sqrt_price_x96(sqrt_price_x96, token0_decimals, token1_decimals);
+        let new_price =
+            calculate_price_from_sqrt_price_x96(sqrt_price_x96, token0_decimals, token1_decimals);
         let new_apr = calculate_apr(pool.fee, pool.swaps_tracked, pool.liquidity);
         pool.update_current_price(new_price);
         pool.update_liquidity(liquidity);
@@ -209,21 +253,17 @@ fn update_existing_pool(
         let volume = amount0_scaled + amount1_scaled;
         pool.add_volume(volume);
 
-
         let readable_amount0 = make_amount_readable(amount0, token0_decimals);
         let readable_amount1 = make_amount_readable(amount1, token1_decimals);
         pool.add_swap_store(readable_amount0, readable_amount1, timestamp);
 
-        return Ok(pool.clone())
-
+        return Ok(pool.clone());
     } else {
         println!("Error: Pool found in HashMap but no index available");
     }
 
     Err(anyhow::anyhow!("Failed to update pool"))
 }
-
-
 
 pub fn calculate_price_from_sqrt_price_x96(
     sqrt_price_x96: U160,
@@ -259,10 +299,7 @@ pub fn calculate_price_from_sqrt_price_x96(
             let _ = writeln!(
                 file,
                 "Extreme price: {} (sqrt: {}, raw: {}, adjustment: {})",
-                adjusted_price,
-                sqrt_price_u256,
-                price,
-                decimal_adjustment
+                adjusted_price, sqrt_price_u256, price, decimal_adjustment
             );
         }
 
@@ -286,7 +323,7 @@ pub fn calculate_tick_range(tick: i32, tick_spacing: i32) -> (i32, i32) {
 
 pub fn calculate_daily_fees(fee: u32, swaps_tracked: usize) -> f64 {
     let fee_tier = fee as f64 / 1_000_000.0;
-    let total_fees = swaps_tracked as f64 * fee_tier; 
+    let total_fees = swaps_tracked as f64 * fee_tier;
     total_fees
 }
 
@@ -300,17 +337,15 @@ pub fn calculate_apr(fee: u32, swaps_tracked: usize, liquidity: u128) -> f64 {
     apr
 }
 
-
 pub fn make_amount_readable(amount: i128, decimals: u8) -> f64 {
     let divisor = 10f64.powi(decimals as i32);
     amount as f64 / divisor
 }
 
-pub fn simplify_network_name(network: &str) -> &str {
+pub fn simplify_network_name(network: AlchemyNetwork) -> String {
     match network {
-        "eth-mainnet" => "eth",
-        "base-mainnet" => "base",
-        "arb-mainnet" => "arb",
-        _ => network,
+        AlchemyNetwork::BaseMainnet => "base".to_string(),
+        AlchemyNetwork::EthMainnet => "eth".to_string(),
+        AlchemyNetwork::ArbMainnet => "arb".to_string(),
     }
 }
