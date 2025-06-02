@@ -38,6 +38,6 @@ impl TokenInfo {
                 }
             }
         }
-        ratatui::style::Color::White // Default color if no change or invalid values
+        ratatui::style::Color::White
     }
 }

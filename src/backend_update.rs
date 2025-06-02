@@ -1,6 +1,7 @@
 use crate::PoolInfo;
 use crate::TokenInfo;
 
+//send over mspc channel to update UI
 #[derive(Debug, Clone)]
 pub enum BackendUpdate {
     PoolUpdated(PoolInfo),

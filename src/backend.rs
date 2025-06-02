@@ -1,32 +1,29 @@
-use std::{io::{self, Write}, ops::Add};
-use alloy::{core::primitives::Address, network::Ethereum, providers::{self, Provider, ProviderBuilder, WsConnect}, rpc::types::{Filter, Topic}, sol_types::SolEvent};
+use std::{io::{self, Write}, };
+use alloy::{core::primitives::Address, network::Ethereum, providers::{Provider, ProviderBuilder, WsConnect}, rpc::types::Filter, sol_types::SolEvent};
 use anyhow::Result;
 use dotenv::dotenv;
-use std::{env, collections::HashMap, time::{Duration, Instant}};
-use amms::amms::uniswap_v3::{IUniswapV3Factory::IUniswapV3FactoryInstance, IUniswapV3Pool::IUniswapV3PoolInstance, IUniswapV3PoolEvents::Swap};
-// use reqwest::Client;
+use std::{env, collections::HashMap,};
+use amms::amms::uniswap_v3::IUniswapV3PoolEvents::Swap;
 use tokio::sync::mpsc;
 use std::fs::OpenOptions;
 use std::io::BufWriter;
-use futures::stream::{self, StreamExt, SelectAll};
+use futures::stream::{self, StreamExt};
 
 // other file imports
-use crate::ierc20::IERC20;
-use crate::poollnfo::PoolInfo;
+use crate::pool_info::PoolInfo;
 use crate::swap_processor::process_swap_event;
-use crate::tokenInfo::TokenInfo;
-use crate::prices::get_token_price;
-use crate::backendUpdate::BackendUpdate;
+use crate::token_info::TokenInfo;
+use crate::backend_update::BackendUpdate;
 
-use reqwest::Client;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
 struct TokenPriceResponse {
-    price: Option<String>,
+    _price: Option<String>,
 }
 
-pub async fn run_ws_backend(tx: mpsc::Sender<(BackendUpdate)>) -> Result<()> {
+
+pub async fn run_ws_backend(tx: mpsc::Sender<BackendUpdate>) -> Result<()> {
     // load env variables
     dotenv().ok();
     
@@ -94,22 +91,17 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(BackendUpdate)>) -> Result<()> {
     let arb_ws_subscription = arb_ws_provider.subscribe_logs(&swap_filter).await?;
     let arb_ws_stream = arb_ws_subscription.into_stream().map(|log: alloy::rpc::types::Log| ("arb-mainnet", log)).boxed();
 
-
+    // merged websocket stream
     let mut merged_stream = stream::select_all(vec![
         eth_ws_stream,
         base_ws_stream,
         arb_ws_stream,
     ]);
 
-
-
     io::stdout().flush()?;
 
-
     let mut token_info_map: HashMap<Address, TokenInfo> = HashMap::new();
-
     let mut pool_info_map: HashMap<Address, PoolInfo> = HashMap::new();
-
     let mut eth_swaps = 0;
     let mut base_swaps = 0;
     let mut arb_swaps = 0;
@@ -117,8 +109,7 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(BackendUpdate)>) -> Result<()> {
     //stream until interrupted
 
     while let Some((network, log)) = merged_stream.next().await {
-        if let Ok(decode) = log.log_decode::<Swap>() {
-
+        if let Ok(_decode) = log.log_decode::<Swap>() {
 
             let provider = match network {
                 "eth-mainnet" => {
@@ -137,9 +128,6 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(BackendUpdate)>) -> Result<()> {
                     continue;
                 }
             };
-
-
-            let pool_address = log.address();
 
             match process_swap_event(
                 &log,

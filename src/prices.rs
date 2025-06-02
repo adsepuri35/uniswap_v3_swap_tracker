@@ -1,10 +1,7 @@
-use alloy::{core::primitives::Address, providers::{Provider, ProviderBuilder}};
-use dotenv::dotenv;
+use alloy::core::primitives::Address;
 use serde::{Deserialize, Serialize};
 use reqwest::Client;
 use anyhow::Result;
-use std::fs::OpenOptions;
-use std::io::Write;
 
 #[derive(Serialize, Debug)]
 struct TokenPriceRequest {
@@ -19,28 +16,27 @@ struct TokenAddress {
 
 #[derive(Deserialize, Debug)]
 struct TokenPriceResponse {
-    data: Vec<TokenPriceData>, // Match the "data" array in the JSON
+    data: Vec<TokenPriceData>,
 }
 
 #[derive(Deserialize, Debug)]
 struct TokenPriceError {
-    message: String,
+    _message: String,
 }
-
 
 #[derive(Deserialize, Debug)]
 struct TokenPriceData {
     network: String,
     address: String,
-    prices: Vec<TokenPrice>, // Match the "prices" array in the JSON
-    error: Option<TokenPriceError>,   // Match the "error" field in the JSON
+    prices: Vec<TokenPrice>,
+    error: Option<TokenPriceError>,
 }
 
 #[derive(Deserialize, Debug)]
 struct TokenPrice {
     currency: String,
-    value: String,           // Match the "value" field as a String
-    lastUpdatedAt: String,   // Match the "lastUpdatedAt" field
+    value: String,
+    lastUpdatedAt: String,
 }
 
 
@@ -72,16 +68,13 @@ pub async fn get_token_price(
         return Ok(None);
     }
 
-    // Log the response body for debugging
     let body_text = response.text().await?;
 
-    // Deserialize the response
     let price_response: TokenPriceResponse = serde_json::from_str(&body_text)?;
 
-    // Extract the first price value
+    // get first price value
     if let Some(price_data) = price_response.data.first() {
-        // Check if there is an error
-        if let Some(error_obj) = &price_data.error {
+        if let Some(_error_obj) = &price_data.error {
             // println!("Error fetching price for token {}: {}", token_address, error_obj.message);
             return Ok(None);
         }
@@ -92,9 +85,9 @@ pub async fn get_token_price(
             return Ok(None);
         }
 
-        // Extract the first price value
+        // extract the first price value
         if let Some(price) = price_data.prices.first() {
-            return Ok(Some(price.value.clone())); // Return the value as a String
+            return Ok(Some(price.value.clone()));
         }
     }
 

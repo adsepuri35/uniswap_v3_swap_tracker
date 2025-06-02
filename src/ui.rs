@@ -1,13 +1,9 @@
-use std::hash::Hash;
-use std::{io, ops::Add};
 use std::collections::HashMap;
-use amms::amms::Token;
-use crossterm::{event::{self, Event, KeyCode, KeyEvent, KeyEventKind}, terminal};
+use crossterm::{event::{self, Event, KeyCode, KeyEvent, KeyEventKind}};
 use ratatui::{
     buffer::Buffer,
     layout::{Rect, Constraint},
     style::Stylize,
-    symbols::border,
     text::{Line, Text},
     widgets::{Block, Paragraph, Widget, Table, Row, Cell},
     DefaultTerminal, Frame,
@@ -18,15 +14,15 @@ use std::cmp::min;
 use alloy::core::primitives::Address;
 
 //file imports
-use crate::poollnfo::PoolInfo;
-use crate::tokenInfo::TokenInfo;
-use crate::backendUpdate::BackendUpdate;
+use crate::pool_info::PoolInfo;
+use crate::token_info::TokenInfo;
+use crate::backend_update::BackendUpdate;
 
 #[derive(Debug)]
 pub struct TerminalUI   {
     exit: bool,
     total_swaps: usize,
-    rx: Option<Receiver<(BackendUpdate)>>,
+    rx: Option<Receiver<BackendUpdate>>,
     scroll_offset: usize,
     selected_pool_index: usize,
     paused: bool,
@@ -64,26 +60,22 @@ impl Default for TerminalUI {
 impl TerminalUI {
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         while !self.exit {
-            // First, check for events
-            let handle_events = if let Some(rx) = &mut self.rx {
-                // Try to receive without blocking UI
+            // check for events
+            let handle_events = if let Some(_rx) = &mut self.rx {
                 event::poll(std::time::Duration::from_millis(10))?
             } else {
-                // Always check events if we don't have a channel
                 self.handle_events()?;
-                false // Already handled events
+                false
             };
             
-            // Handle events if needed (separate from channel checking)
             if handle_events {
                 self.handle_events()?;
             }
             
-            // Now check for channel updates
+            // check for channel updates
             if let Some(rx) = &mut self.rx {
-                // Check channel for updates
                 match rx.try_recv() {
-                    Ok((backend_update)) => {
+                    Ok(backend_update) => {
                         match backend_update {
                             BackendUpdate::PoolUpdated(pool) => {
                                 self.pool_info_map.insert(pool.pool_address, pool);
@@ -101,13 +93,10 @@ impl TerminalUI {
                         }
                     }
                     Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
-                        // No data available, that's fine
+                        // no data available
                     }
                     Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
-                        // Channel closed, might want to handle this
                         self.rx = None;
-                        // println!("Channel disconnected");
-                        // self.status_message = "Backend disconnected. Data will not update.".to_string();
                     }
                 }
             }
@@ -117,7 +106,6 @@ impl TerminalUI {
                 terminal.draw(|frame| self.draw(frame))?;
             }
             
-            // Small sleep to prevent CPU spinning
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
         Ok(())
@@ -129,8 +117,6 @@ impl TerminalUI {
 
     fn handle_events(&mut self) -> Result<()> {
         match event::read()? {
-            // it's important to check that the event is a key press event as
-            // crossterm also emits key release and repeat events on Windows.
             Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
                 self.handle_key_event(key_event)
             }
@@ -154,43 +140,37 @@ impl TerminalUI {
                 self.show_prices = !self.show_prices
             }
 
-            // Add scroll controls
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.selected_pool_index > 0 {
                     self.selected_pool_index -= 1;
 
-                    // Adjust scroll offset if the selected pool is above the visible range
                     if self.selected_pool_index < self.scroll_offset {
                         self.scroll_offset = self.selected_pool_index;
                     }
                 }
             }
 
-            // Move selection down
             KeyCode::Down | KeyCode::Char('j') => {
                 if self.selected_pool_index < self.pool_info_map.len().saturating_sub(1) {
                     self.selected_pool_index += 1;
 
-                    // Adjust scroll offset if the selected pool is below the visible range
-                    let max_visible = 10; // Number of rows visible at a time
+                    let max_visible = 10;
                     if self.selected_pool_index >= self.scroll_offset + max_visible {
                         self.scroll_offset = self.selected_pool_index + 1 - max_visible;
                     }
                 }
             }
 
-            // Scroll a page up
             KeyCode::PageUp => {
-                let max_visible = 10; // Number of rows visible at a time
+                let max_visible = 10;
                 if self.scroll_offset > 0 {
                     self.scroll_offset = self.scroll_offset.saturating_sub(max_visible);
                     self.selected_pool_index = self.scroll_offset;
                 }
             }
 
-            // Scroll a page down
             KeyCode::PageDown => {
-                let max_visible = 10; // Number of rows visible at a time
+                let max_visible = 10;
                 let max_scroll = self.pool_info_map.len().saturating_sub(max_visible);
                 if self.scroll_offset < max_scroll {
                     self.scroll_offset = (self.scroll_offset + max_visible).min(max_scroll);
@@ -199,11 +179,9 @@ impl TerminalUI {
             }
 
             KeyCode::Home => {
-                // Scroll to the top
                 self.scroll_offset = 0;
             }
             KeyCode::End => {
-                // Scroll to the bottom
                 self.scroll_offset = self.pool_info_map.len().saturating_sub(1);
             }
 
@@ -241,7 +219,7 @@ impl TerminalUI {
         self.exit
     }
 
-    pub fn with_receiver(rx: Receiver<(BackendUpdate)>) -> Self {
+    pub fn with_receiver(rx: Receiver<BackendUpdate>) -> Self {
         Self {
             exit: false,
             total_swaps: 0,
@@ -283,36 +261,31 @@ impl Widget for &TerminalUI {
 
         let title = Line::from(" Uniswap v3 Swap Tracker (ARB, BASE, ETH) ".magenta().bold());
 
-        // Create a block for the UI
+        // ui block
         let block = Block::bordered()
             .title(title.centered())
             .title_bottom(instructions.centered())
             .border_type(ratatui::widgets::BorderType::Rounded);
 
-        // Render the block in the area
         block.clone().render(area, buf);
 
-        // Calculate inner area for content
         let inner_area = block.inner(area);
 
-        // Create header with total stats
         let header = format!(" Pools Tracked: {} | Swaps Tracked: {} | Tokens Tracked: {} | ETH Swaps: {} | BASE Swaps: {} | ARB Swaps: {} ", self.pool_info_map.len(), self.total_swaps, self.token_info_map.len(), self.eth_swaps, self.base_swaps, self.arb_swaps);
         let header_text = Text::from(header);
 
-        // Render header
         Paragraph::new(header_text)
             .render(Rect::new(inner_area.x, inner_area.y, inner_area.width, 1), buf);
 
-        // Split the inner area into two panes: left (Pools) and right (Prices)
         let panes = ratatui::layout::Layout::default()
             .direction(ratatui::layout::Direction::Horizontal)
             .constraints([
-                Constraint::Percentage(70), // Pools block takes 70% of the width
-                Constraint::Percentage(30), // Prices block takes 30% of the width
+                Constraint::Percentage(70), // pools block = 70%
+                Constraint::Percentage(30), // prices block = 30%
             ])
             .split(Rect::new(
                 inner_area.x,
-                inner_area.y + 2, // +2 to leave space after header
+                inner_area.y + 2,
                 inner_area.width,
                 inner_area.height.saturating_sub(2),
             ));
@@ -374,10 +347,10 @@ impl Widget for &TerminalUI {
                 let color = pool.get_price_change_color();
                 
                 if is_selected {
-                    if (color == ratatui::style::Color::White) {
+                    if color == ratatui::style::Color::White {
                         Cell::from(price_text).style(
                         ratatui::style::Style::default()
-                            .fg(ratatui::style::Color::Yellow) // Use yellow for selected rows
+                            .fg(ratatui::style::Color::Yellow) // selected row = yellow
                             .add_modifier(ratatui::style::Modifier::BOLD),
                         )
                     } else {
@@ -389,7 +362,6 @@ impl Widget for &TerminalUI {
                     }
                     
                 } else {
-                    // Use the price change color for non-selected rows
                     Cell::from(price_text).style(ratatui::style::Style::default().fg(color))
                 }
             };
@@ -429,14 +401,13 @@ impl Widget for &TerminalUI {
                 } else if volume >= 1_000.0 {
                     format!("{:.2}K", volume / 1_000.0)
                 } else if volume > 0.0 {
-                    // For small non-zero values, display without trailing decimals
                     if volume.fract() == 0.0 {
-                        format!("{:.0}", volume) // No decimal places for whole numbers
+                        format!("{:.0}", volume)
                     } else {
-                        format!("{:.2}", volume) // Two decimal places for fractional values
+                        format!("{:.2}", volume)
                     }
                 } else {
-                    "0".to_string() // Display "0" for zero values
+                    "0".to_string()
                 }
             }
 
@@ -527,18 +498,15 @@ impl Widget for &TerminalUI {
 
                 let style = if is_selected {
                     if color == ratatui::style::Color::White {
-                        // If the price color is white, use yellow for the selected row
                         ratatui::style::Style::default()
                             .fg(ratatui::style::Color::Yellow)
                             .add_modifier(ratatui::style::Modifier::BOLD)
                     } else {
-                        // Otherwise, use the price color
                         ratatui::style::Style::default()
                             .fg(color)
                             .add_modifier(ratatui::style::Modifier::BOLD)
                     }
                 } else {
-                    // Use the price color for non-selected rows
                     ratatui::style::Style::default().fg(color)
                 };
 
@@ -565,12 +533,11 @@ impl Widget for &TerminalUI {
             prices_table.render(right_area, buf);
 
         } else {
-            // Render swaps for the selected pool
+            // render swaps for selected pool
             if let Some(selected_pool) = sorted_pools.get(self.selected_pool_index) {
-                // Use the pool address to find the correct index in the original list
-                let key = (selected_pool.pool_address.clone());
+                let key = selected_pool.pool_address.clone();
                 if let Some(pool) = self.pool_info_map.get(&key) {
-                    let swap_store = &pool.swap_store; // Retrieve the swap events
+                    let swap_store = &pool.swap_store; // get swap events
 
                     let headers = Row::new(vec![
                         Cell::from("Timestamp"),
@@ -583,7 +550,7 @@ impl Widget for &TerminalUI {
                             .add_modifier(ratatui::style::Modifier::BOLD),
                     );
 
-                    // If there are no swaps, display an empty row
+                    // no swaps -> empty row
                     let rows: Vec<Row> = if swap_store.is_empty() {
                         vec![Row::new(vec![
                             Cell::from("No swaps available"),
@@ -623,7 +590,7 @@ impl Widget for &TerminalUI {
                 }
                 
             } else {
-                // If no pools are available, render an empty swaps table
+                // no pools -> empty swaps table
                 let headers = Row::new(vec![
                     Cell::from("Timestamp"),
                     Cell::from("Amount0"),

@@ -1,6 +1,6 @@
 use alloy::core::primitives::{Address};
 
-use crate::tokenInfo::TokenInfo;
+use crate::token_info::TokenInfo;
 
 
 #[derive(Debug, Clone)]
@@ -122,7 +122,7 @@ impl PoolInfo {
 
         self.swap_store.push((amount0, amount1, timestamp));
 
-        if (self.swap_store.len() > MAX_SWAP_HISTORY) {
+        if self.swap_store.len() > MAX_SWAP_HISTORY {
             self.swap_store = self.swap_store.split_off(self.swap_store.len() - MAX_SWAP_HISTORY);
         }
     }

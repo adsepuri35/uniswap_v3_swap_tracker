@@ -1,20 +1,17 @@
 
 use alloy::{core::primitives::{Address, U160, U256}, providers::{Provider}};
 use anyhow::Result;
-use serde_json::error;
 use std::{collections::HashMap};
-use amms::amms::{uniswap_v3::{IUniswapV3Pool::IUniswapV3PoolInstance, IUniswapV3PoolEvents::Swap}, Token};
-// use reqwest::Client;
+use amms::amms::{uniswap_v3::{IUniswapV3Pool::IUniswapV3PoolInstance, IUniswapV3PoolEvents::Swap}};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::str::FromStr;
 use chrono::Local;
 
-
 // other file imports
 use crate::ierc20::IERC20;
-use crate::poollnfo::PoolInfo;
-use crate::tokenInfo::TokenInfo;
+use crate::pool_info::PoolInfo;
+use crate::token_info::TokenInfo;
 use crate::prices::get_token_price;
 
 pub async fn process_swap_event<P: Provider + Clone> (
@@ -25,13 +22,12 @@ pub async fn process_swap_event<P: Provider + Clone> (
     pool_info_map: &mut HashMap<Address, PoolInfo>,
     api_key: &str,
 ) -> Result<(Option<PoolInfo>, Option<TokenInfo>, Option<TokenInfo>)> {
-    let data_bytes = &log.data().data;  // Access the bytes field directly
+    let data_bytes = &log.data().data;
     
-    if data_bytes.len() < 128 {  // Check length on bytes
+    if data_bytes.len() < 128 {
         return Err(anyhow::anyhow!("Swap event data too short: {}", data_bytes.len()));
     }
     
-    // Wrap critical sections in better error handling
     let pool_address = log.address();
 
     let contract = IUniswapV3PoolInstance::new(pool_address, provider.clone());
@@ -46,8 +42,6 @@ pub async fn process_swap_event<P: Provider + Clone> (
         }
     };
 
-    let swap_event= swap_event_log.data().clone(); // possible error
-
     let now = Local::now();
     let timestamp = now.format("%Y-%m-%d %H:%M:%S").to_string();
 
@@ -58,9 +52,9 @@ pub async fn process_swap_event<P: Provider + Clone> (
     let tick = match swap_event_log.data().tick.try_into() {
         Ok(t) => t,
         Err(_) => {
-            // Log this issue
+            // log issue
             println!("Warning: Missing tick in swap event for pool {}", pool_address);
-            0 // Default tick, which will give a price of 1.0001^0 = 1.0
+            0 //default tick -> 1.0001^0 = 1.0
         }
     };
 
@@ -68,7 +62,7 @@ pub async fn process_swap_event<P: Provider + Clone> (
     let mut updated_token0 = None;
     let mut updated_token1 = None;
 
-    // acquire token addresses + symbols
+    // token addresses + symbols
     let token0_address = contract.token0().call().await?;
     let token1_address = contract.token1().call().await?;
     if !token_info_map.contains_key(&token0_address) {
@@ -99,7 +93,6 @@ pub async fn process_swap_event<P: Provider + Clone> (
         }
     }
 
-    // Fetch token1 price if not already in the map
     if !token_info_map.contains_key(&token1_address) {
         let token_price = get_token_price(network.to_string(), token0_address, api_key).await?;
         let token_price_value = token_price.unwrap_or("Unknown".to_string()); // Provide a default value
@@ -127,17 +120,12 @@ pub async fn process_swap_event<P: Provider + Clone> (
         }
     }
 
-
-    let mut updated_pool = None;
-
-    // add structs to pool storage (new pool)
-    if !pool_info_map.contains_key(&pool_address) {
-        let new_pool = process_new_pool(network, pool_address, token0_address, token1_address, contract, swap_event, token_info_map, pool_info_map, amount0, amount1, sqrt_price_x96, liquidity, tick, timestamp).await?;
-        updated_pool = Some(new_pool);
+    //get updated pool
+    let updated_pool = if !pool_info_map.contains_key(&pool_address) {
+        Some(process_new_pool(network, pool_address, token0_address, token1_address, contract, token_info_map, pool_info_map, amount0, amount1, sqrt_price_x96, liquidity, tick, timestamp,).await?,)
     } else {
-        let updated = update_existing_pool(network, pool_address, pool_info_map, amount0, amount1, sqrt_price_x96, liquidity, tick, swap_event, timestamp)?;
-        updated_pool = Some(updated);
-    }
+        Some(update_existing_pool(network, pool_address, pool_info_map, amount0, amount1, sqrt_price_x96, liquidity, timestamp,)?,)
+    };
 
     Ok((updated_pool, updated_token0, updated_token1))
 }
@@ -148,7 +136,6 @@ async fn process_new_pool<P: Provider + Clone>(
     token0_address: Address,
     token1_address: Address,
     contract: IUniswapV3PoolInstance<P>,
-    swap: Swap,
     token_info_map: &mut HashMap<Address, TokenInfo>,
     pool_info_map: &mut HashMap<Address, PoolInfo>,
     amount0: i128,
@@ -157,7 +144,7 @@ async fn process_new_pool<P: Provider + Clone>(
     liquidity: u128,
     tick: i32,
     timestamp: String,
-) -> Result<(PoolInfo)> {
+) -> Result<PoolInfo> {
     
     
     let fee_uint = contract.fee().call().await?;
@@ -196,8 +183,6 @@ fn update_existing_pool(
     amount1: i128,
     sqrt_price_x96: U160,
     liquidity: u128,
-    tick: i32,
-    swap: Swap,
     timestamp: String,
 ) -> Result<PoolInfo> {
     if let Some(pool) = pool_info_map.get_mut(&pool_address) {
@@ -249,28 +234,22 @@ pub fn calculate_price_from_sqrt_price_x96(
         return 0.0;
     }
 
-    // Convert U160 to U256 to preserve full 160-bit precision
-    let mut limbs = [0u64; 4]; // Create an array of 4 u64 elements
+    let mut limbs = [0u64; 4];
     let u160_limbs = sqrt_price_x96.into_limbs();
     limbs[0] = u160_limbs[0];
     limbs[1] = u160_limbs[1];
     limbs[2] = u160_limbs[2];
-    // limbs[3] is already 0
 
     let sqrt_price_u256 = U256::from_limbs(limbs);
 
-    // Convert U256 to f64 via string to avoid truncation
     let sqrt_price_f64 = f64::from_str(&sqrt_price_u256.to_string()).unwrap_or(0.0);
 
-    // Compute raw price = (sqrtPriceX96 / 2^96)^2
     let sqrt_scale = 2f64.powi(96);
     let price = (sqrt_price_f64 / sqrt_scale).powi(2);
 
-    // Adjust for token decimals
     let decimal_adjustment = 10f64.powi((decimals_token0 as i32) - (decimals_token1 as i32));
     let adjusted_price = price * decimal_adjustment;
 
-    // Sanity check and clamp
     if !adjusted_price.is_finite() || adjusted_price > 1e10 || adjusted_price < 1e-10 {
         if let Ok(mut file) = OpenOptions::new()
             .create(true)
@@ -332,6 +311,6 @@ pub fn simplify_network_name(network: &str) -> &str {
         "eth-mainnet" => "eth",
         "base-mainnet" => "base",
         "arb-mainnet" => "arb",
-        _ => network, // Fallback to the original name if no match
+        _ => network,
     }
 }
