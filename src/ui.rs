@@ -36,6 +36,8 @@ pub struct TerminalUI   {
     show_prices: bool,
     pool_info_map: HashMap<Address, PoolInfo>,
     token_info_map: HashMap<Address, TokenInfo>,
+    token_scroll_offset: usize,
+    selected_token_index: usize,
 }
 
 impl Default for TerminalUI {
@@ -53,6 +55,8 @@ impl Default for TerminalUI {
             show_prices: false,
             pool_info_map: HashMap::new(),
             token_info_map: HashMap::new(),
+            token_scroll_offset: 0,
+            selected_token_index: 0,
         }
     }
 }
@@ -203,6 +207,27 @@ impl TerminalUI {
                 self.scroll_offset = self.pool_info_map.len().saturating_sub(1);
             }
 
+            KeyCode::Char('w') => {
+                if self.selected_token_index > 0 {
+                    self.selected_token_index -= 1;
+
+                    if self.selected_token_index < self.token_scroll_offset {
+                        self.token_scroll_offset = self.selected_token_index;
+                    }
+                }
+            }
+
+            KeyCode::Char('s') => {
+                if self.selected_token_index < self.token_info_map.len().saturating_sub(1) {
+                    self.selected_token_index += 1;
+
+                    let max_visible = 10;
+                    if self.selected_token_index >= self.token_scroll_offset + max_visible {
+                        self.token_scroll_offset = self.selected_token_index + 1 - max_visible;
+                    }
+                }
+            }
+
 
             _ => {}
         }
@@ -230,6 +255,8 @@ impl TerminalUI {
             show_prices: false,
             pool_info_map: HashMap::new(),
             token_info_map: HashMap::new(),
+            token_scroll_offset: 0,
+            selected_token_index: 0,
         }
     }
 
@@ -238,10 +265,10 @@ impl TerminalUI {
 impl Widget for &TerminalUI {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let instructions = Line::from(vec![
-            " Up ".into(),
-            "<↑>".blue().bold(),
-            " Down ".into(),
-            "<↓>".blue().bold(),
+            " Up (Pool/Price) ".into(),
+            "<↑/w>".blue().bold(),
+            " Down (Pool/Price) ".into(),
+            "<↓/s>".blue().bold(),
             " Page Up ".into(),
             "<PgUp>".blue().bold(),
             " Page Down ".into(),
@@ -470,7 +497,25 @@ impl Widget for &TerminalUI {
             ])
             .style(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD));
 
-            let rows: Vec<Row> = self.token_info_map.values().map(|token_info| {
+            let token_count = self.token_info_map.len();
+            let max_visible = right_area.height as usize;
+            let start_idx: usize = if token_count <= max_visible {
+                0
+            } else {
+                let max_start = token_count.saturating_sub(max_visible);
+                self.token_scroll_offset.min(max_start)
+            };
+
+            let visible_tokens: Vec<_> = self
+                .token_info_map
+                .values()
+                .skip(start_idx)
+                .take(max_visible)
+                .collect();
+
+            let rows: Vec<Row> = visible_tokens.iter().enumerate().map(|(i, token_info)| {
+                let is_selected = start_idx + i == self.selected_token_index;
+
                 let price = token_info.value.clone().unwrap_or("Unknown".to_string());
                 let price_display = if price == "Unknown" {
                     price
@@ -480,13 +525,26 @@ impl Widget for &TerminalUI {
 
                 let color = token_info.get_price_change_color();
 
-                Row::new(vec![
-                    Cell::from(token_info.symbol.clone()),
-                    Cell::from(price_display).style(
+                let style = if is_selected {
+                    if color == ratatui::style::Color::White {
+                        // If the price color is white, use yellow for the selected row
+                        ratatui::style::Style::default()
+                            .fg(ratatui::style::Color::Yellow)
+                            .add_modifier(ratatui::style::Modifier::BOLD)
+                    } else {
+                        // Otherwise, use the price color
                         ratatui::style::Style::default()
                             .fg(color)
-                            .add_modifier(ratatui::style::Modifier::BOLD),
-                    ),
+                            .add_modifier(ratatui::style::Modifier::BOLD)
+                    }
+                } else {
+                    // Use the price color for non-selected rows
+                    ratatui::style::Style::default().fg(color)
+                };
+
+                Row::new(vec![
+                    Cell::from(token_info.symbol.clone()).style(style),
+                    Cell::from(price_display).style(style),
                 ])
             }).collect();
 
