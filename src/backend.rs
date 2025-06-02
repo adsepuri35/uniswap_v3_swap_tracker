@@ -10,7 +10,6 @@ use std::fs::OpenOptions;
 use std::io::BufWriter;
 use futures::stream::{self, StreamExt, SelectAll};
 
-
 // other file imports
 use crate::ierc20::IERC20;
 use crate::poollnfo::PoolInfo;
@@ -26,7 +25,6 @@ use serde::Deserialize;
 struct TokenPriceResponse {
     price: Option<String>,
 }
-
 
 pub async fn run_ws_backend(tx: mpsc::Sender<(BackendUpdate)>) -> Result<()> {
     // load env variables
@@ -45,6 +43,7 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(BackendUpdate)>) -> Result<()> {
     ];
     let swap_filter = Filter::new().event_signature(events);
 
+
     // eth http provider
     let eth_url = format!("https://eth-mainnet.g.alchemy.com/v2/{}", api_key);
     let eth_provider = ProviderBuilder::new()
@@ -62,7 +61,6 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(BackendUpdate)>) -> Result<()> {
     let arb_provider = ProviderBuilder::new()
         .network::<Ethereum>()
         .connect_http(arb_url.parse()?);
-
 
     
     // eth websocket stream
@@ -108,7 +106,6 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(BackendUpdate)>) -> Result<()> {
     io::stdout().flush()?;
 
 
-
     let mut token_info_map: HashMap<Address, TokenInfo> = HashMap::new();
 
     let mut pool_info_map: HashMap<Address, PoolInfo> = HashMap::new();
@@ -152,20 +149,18 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(BackendUpdate)>) -> Result<()> {
                 &mut pool_info_map,
                 &api_key
             ).await {
-                Ok((Some(updated_pool), Some(updated_token))) => {
-                    // Only send on success
-                    tx.send(BackendUpdate::PoolUpdated(updated_pool)).await?;
-                    tx.send(BackendUpdate::TokenUpdated(updated_token)).await?;
-                },
-                Ok((Some(updated_pool), None)) => {
-                    tx.send(BackendUpdate::PoolUpdated(updated_pool)).await?;
-                },
-                Ok((None, Some(updated_token))) => {
-                    tx.send(BackendUpdate::TokenUpdated(updated_token)).await?;
-                },
-                Ok((None, None)) => {
-                    // do no
-                },
+                Ok((updated_pool, updated_token0, updated_token1)) => {
+                    // Send updates for pool and tokens if they exist
+                    if let Some(pool) = updated_pool {
+                        tx.send(BackendUpdate::PoolUpdated(pool)).await?;
+                    }
+                    if let Some(token0) = updated_token0 {
+                        tx.send(BackendUpdate::TokenUpdated(token0)).await?;
+                    }
+                    if let Some(token1) = updated_token1 {
+                        tx.send(BackendUpdate::TokenUpdated(token1)).await?;
+                    }
+                }
                 Err(e) => {
                     let file_result = OpenOptions::new()
                         .create(true)
@@ -196,6 +191,3 @@ pub async fn run_ws_backend(tx: mpsc::Sender<(BackendUpdate)>) -> Result<()> {
 
     Ok(())
 }
-
-
-

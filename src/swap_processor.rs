@@ -24,7 +24,7 @@ pub async fn process_swap_event<P: Provider + Clone> (
     token_info_map: &mut HashMap<Address, TokenInfo>,
     pool_info_map: &mut HashMap<Address, PoolInfo>,
     api_key: &str,
-) -> Result<(Option<PoolInfo>, Option<TokenInfo>)> {
+) -> Result<(Option<PoolInfo>, Option<TokenInfo>, Option<TokenInfo>)> {
     let data_bytes = &log.data().data;  // Access the bytes field directly
     
     if data_bytes.len() < 128 {  // Check length on bytes
@@ -65,14 +65,15 @@ pub async fn process_swap_event<P: Provider + Clone> (
     };
 
 
-    let mut updated_token = None;
+    let mut updated_token0 = None;
+    let mut updated_token1 = None;
 
     // acquire token addresses + symbols
     let token0_address = contract.token0().call().await?;
     let token1_address = contract.token1().call().await?;
     if !token_info_map.contains_key(&token0_address) {
         let token_price = get_token_price(network.to_string(), token0_address, api_key).await?;
-        let token_price_value = token_price.unwrap_or("Unknown".to_string()); // Provide a default value
+        let token_price_value = token_price.unwrap_or("Unknown".to_string());
         let ierc20_token0 = IERC20::new(token0_address, provider.clone());
         let token0_symbol = ierc20_token0.symbol().call().await?;
         let token0_decimal = ierc20_token0.decimals().call().await?;
@@ -82,11 +83,20 @@ pub async fn process_swap_event<P: Provider + Clone> (
             symbol: token0_symbol,
             decimals: token0_decimal,
             value: Some(token_price_value),
+            prev_value: None,
             last_updated: String::new(),
         };
 
         token_info_map.insert(token0_address, new_token.clone());
-        updated_token = Some(new_token);
+        updated_token0 = Some(new_token);
+    } else {
+        let curr_token_price = get_token_price(network.to_string(), token0_address, api_key).await?;
+        let curr_token_price_value = curr_token_price.unwrap_or("Unknown".to_string());
+
+        if let Some(token_info) = token_info_map.get_mut(&token0_address) {
+            token_info.update_value(Some(curr_token_price_value)); // Use the update_value method
+            updated_token0 = Some(token_info.clone());
+        }
     }
 
     // Fetch token1 price if not already in the map
@@ -102,10 +112,19 @@ pub async fn process_swap_event<P: Provider + Clone> (
             symbol: token1_symbol,
             decimals: token1_decimal,
             value: Some(token_price_value),
+            prev_value: None,
             last_updated: String::new(),
         };
         token_info_map.insert(token1_address, new_token.clone());
-        updated_token = Some(new_token);
+        updated_token1 = Some(new_token);
+    } else {
+        let curr_token_price = get_token_price(network.to_string(), token1_address, api_key).await?;
+        let curr_token_price_value = curr_token_price.unwrap_or("Unknown".to_string());
+
+        if let Some(token_info) = token_info_map.get_mut(&token1_address) {
+            token_info.update_value(Some(curr_token_price_value)); // Use the update_value method
+            updated_token1 = Some(token_info.clone());
+        }
     }
 
 
@@ -120,7 +139,7 @@ pub async fn process_swap_event<P: Provider + Clone> (
         updated_pool = Some(updated);
     }
 
-    Ok((updated_pool, updated_token))
+    Ok((updated_pool, updated_token0, updated_token1))
 }
 
 async fn process_new_pool<P: Provider + Clone>(

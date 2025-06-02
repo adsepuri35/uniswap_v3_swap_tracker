@@ -439,8 +439,8 @@ impl Widget for &TerminalUI {
             rows,
             vec![
                 Constraint::Length(6),
-                Constraint::Length(20),
-                Constraint::Length(13),
+                Constraint::Length(21),
+                Constraint::Length(12),
                 Constraint::Length(10),
                 Constraint::Length(10),
                 Constraint::Length(20),
@@ -473,13 +473,20 @@ impl Widget for &TerminalUI {
             let rows: Vec<Row> = self.token_info_map.values().map(|token_info| {
                 let price = token_info.value.clone().unwrap_or("Unknown".to_string());
                 let price_display = if price == "Unknown" {
-                    price // No `$` sign for unknown prices
+                    price
                 } else {
-                    format!("${}", price) // Add `$` sign for known prices
+                    format!("${}", price)
                 };
+
+                let color = token_info.get_price_change_color();
+
                 Row::new(vec![
                     Cell::from(token_info.symbol.clone()),
-                    Cell::from(price_display),
+                    Cell::from(price_display).style(
+                        ratatui::style::Style::default()
+                            .fg(color)
+                            .add_modifier(ratatui::style::Modifier::BOLD),
+                    ),
                 ])
             }).collect();
 
