@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use reqwest::Client;
 use anyhow::Result;
 
+use crate::backend::AlchemyNetwork;
+
 #[derive(Serialize, Debug)]
 struct TokenPriceRequest {
     addresses: Vec<TokenAddress>,
@@ -42,7 +44,7 @@ struct TokenPrice {
 
 // pass in network and token address
 pub async fn get_token_price(
-    network: String,
+    network: AlchemyNetwork,
     token_address: Address,
     api_key: &str,
 ) -> Result<Option<String>> {
@@ -50,7 +52,7 @@ pub async fn get_token_price(
 
     let request_body = TokenPriceRequest {
         addresses: vec![TokenAddress {
-            network,
+            network: format!("{:?}", network),
             address: format!("{:?}", token_address),
         }],
     };

@@ -421,7 +421,13 @@ impl Widget for &TerminalUI {
             Row::new(vec![
                 Cell::from(format!("{}", start_idx + i +  1)).style(style), // Index
                 Cell::from(pool.pool_name.to_string()).style(style), // Pool Name
-                Cell::from(pool.networks.join(", ")).style(style), // Networks
+                Cell::from(
+                    pool.networks
+                        .iter()
+                        .map(|network| format!("{:?}", network)) // Use Debug implementation to convert AlchemyNetwork to a string
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ).style(style),
                 Cell::from(format!("{:.2}%", pool.get_fee_percent())).style(style), // Fee
                 Cell::from(format!("{}", pool.swaps_tracked)).style(style), // Swaps
                 price_display, // Price

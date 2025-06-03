@@ -1,11 +1,11 @@
 use alloy::core::primitives::{Address};
 
-use crate::token_info::TokenInfo;
+use crate::{backend::AlchemyNetwork, token_info::TokenInfo};
 
 
 #[derive(Debug, Clone)]
 pub struct PoolInfo {
-    pub networks: Vec<String>,
+    pub networks: Vec<AlchemyNetwork>,
     pub pool_address: Address,
     pub pool_name: String,
     pub token0: Address,
@@ -25,7 +25,7 @@ pub struct PoolInfo {
 
 impl PoolInfo {
     pub fn new(
-        network: String,
+        network: AlchemyNetwork,
         pool_address: Address,
         token0: Address,
         token1: Address,
