@@ -22,21 +22,21 @@ async fn main() -> Result<()> {
     let (tx, rx) = mpsc::channel::<BackendUpdate>(100);
     
     // start backend with separate task
-    let backend_handle = tokio::spawn(async move {
-        match crate::backend::run_ws_backend(tx).await {
-            Ok(_) => println!("Backend finished successfully"),
-            Err(e) => eprintln!("Backend error: {}", e),
-        }
-    });
-    
+    match crate::backend::run_ws_backend(tx).await {
+        Ok(_) => println!("Backend finished successfully"),
+        Err(e) => eprintln!("Backend error: {}", e),
+    };
+
+
+    Ok(())
     // initialize UI with receiver
-    let mut terminal = ratatui::init();
-    let ui_result = TerminalUI::with_receiver(rx).run(&mut terminal);
-    ratatui::restore();
+    // let mut terminal = ratatui::init();
+    // // let ui_result = TerminalUI::with_receiver(rx).run(&mut terminal);
+    // ratatui::restore();
     
     // stop backend upon UI exit
-    backend_handle.abort();
+    // backend_handle.abort();
     
-    ui_result
+    // ui_result
 
 }

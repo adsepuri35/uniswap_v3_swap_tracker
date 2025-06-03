@@ -30,7 +30,7 @@ pub async fn process_swap_event<P: Provider + Clone> (
     
     let pool_address = log.address();
 
-    let contract = IUniswapV3PoolInstance::new(pool_address, provider.clone());
+    let contract: IUniswapV3PoolInstance<P> = IUniswapV3PoolInstance::new(pool_address, provider.clone());
 
     let swap_event_log = match log.log_decode::<Swap>() {
         Ok(event) => {
@@ -62,8 +62,14 @@ pub async fn process_swap_event<P: Provider + Clone> (
     let mut updated_token0 = None;
     let mut updated_token1 = None;
 
+    let chain_id = provider.get_chain_id().await.expect("caught error");
+
+    println!("chain_id: {:?}", chain_id);
+
+   
     // token addresses + symbols
     let token0_address = contract.token0().call().await?;
+     println!("Got here");
     let token1_address = contract.token1().call().await?;
     if !token_info_map.contains_key(&token0_address) {
         let token_price = get_token_price(network.to_string(), token0_address, api_key).await?;
